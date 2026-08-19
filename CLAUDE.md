@@ -169,6 +169,15 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
   `release.py` automation expects. Never run that automation against this add-on's
   news; it has corrupted the changelog before (~190 lines mangled in one run).
 
+- **Rolling back a release is NOT symmetric with shipping one. Read
+  `ROLLBACK.md` BEFORE you publish.** A box cannot downgrade from the repo:
+  `repo/_tools/generate_repo.py` prunes superseded zips so the catalog only ever
+  offers one version, and the fleet runs `general.addonupdates` = 0
+  (AUTO_UPDATES_ON), so a hand-installed older zip silently re-upgrades itself on
+  the next repo check. A feature setting that defaults to OFF is the only fast
+  rollback; anything else means git revert plus a republish of BOTH this repo and
+  the hosted mirror.
+
 ## The tvOS/Apple TV storage rules (read before touching `nsud.py`/`nsub.py`/`wiz.py`)
 
 Apple TV shadows certain userdata `.xml` files into NSUserDefaults; a key SHADOWS the
