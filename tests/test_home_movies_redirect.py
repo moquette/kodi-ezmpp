@@ -160,7 +160,12 @@ class _World:
         if "folderpath" in low:
             return self.folder_path
         if "property(id)" in low:
-            return self.home_item_id
+            # MEASURED on the office Fire TV (Kodi 22.0-BETA1, skin.estuary
+            # 4.1.0): while the Videos window is active, Container(9000) reports
+            # an EMPTY string, not the item that was focused on Home. Modelling
+            # that is load-bearing. A harness that keeps reporting "movies"
+            # inside Videos hides both a hijack path and a missed redirect.
+            return self.home_item_id if self.window == "Home" else ""
         if "foldername" in low:
             return self.folder_path.rstrip("/").rsplit("/", 1)[-1]
         return ""
@@ -974,4 +979,52 @@ def test_service_restarts_the_redirect_on_settings_changed():
     assert starter in ast.dump(on_changed[0]), (
         "onSettingsChanged does not start the redirect, so turning the setting "
         "on would need a Kodi restart"
+    )
+
+
+def test_one_home_tick_is_enough_to_rearm_the_latch(world):
+    """Pins the ORDER of the two latch operations inside tick().
+
+    This defect has been introduced twice. If the "Videos closed" clear runs
+    AFTER the Home sample, the single tick on which the user returns to Home
+    arms the latch and then wipes it in the same pass, because Videos was still
+    visible on the previous tick. Home polls at IDLE_POLL, so the user gets a
+    whole second in which clicking Movies quietly does nothing and they land on
+    the stock empty sources list instead of POV.
+
+    One tick on Home must be enough. Do not relax this to two.
+    """
+    mod = world.load()
+    state = _machine(mod)
+    _visit_movies(world, state)
+    assert len(world.updates()) == 1
+
+    world.on_home("movies")
+    state.tick()  # EXACTLY one tick back on Home
+    world.enter_videos(STOCK_EMPTY_LIBRARY)
+    for _ in range(4):
+        state.tick()
+    assert len(world.updates()) == 2, (
+        "the latch was armed and cleared in the same tick; move the "
+        "videos_was_visible clear ABOVE the Container(9000) sample in tick()"
+    )
+
+
+def test_empty_home_id_never_disarms_a_live_latch(world):
+    """MEASURED: Container(9000).ListItem.Property(id) reads "" while Videos is
+    active. If tick() treated that empty reading as "not Movies" and cleared the
+    latch, the redirect would disarm itself the instant the window it waits for
+    opened, and the feature would never fire at all."""
+    mod = world.load()
+    state = _machine(mod)
+    world.on_home("movies")
+    state.tick()
+    world.enter_videos(STOCK_EMPTY_LIBRARY)
+    assert world.info_label("Container(9000).ListItem.Property(id)") == "", (
+        "harness no longer models the measured empty reading"
+    )
+    for _ in range(4):
+        state.tick()
+    assert len(world.updates()) == 1, (
+        "an empty Home id disarmed the latch, so the redirect can never fire"
     )

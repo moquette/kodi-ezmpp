@@ -260,17 +260,31 @@ class MoviesRedirect(object):
         """Advance one poll step. Returns the seconds to wait before the next."""
         videos = _cond("Window.IsVisible(videos)")
 
+        # Videos closed: the latch never outlives the window it was sampled for.
+        # This runs BEFORE the Home sample, not after, and the order is
+        # load-bearing. Ordered the other way, the tick on which the user returns
+        # to Home both ARMS the latch (Movies is focused again) and then
+        # immediately CLEARS it (Videos was still visible last tick). On Home
+        # this loop polls at IDLE_POLL, so a user who backed out of POV and
+        # clicked Movies again inside that second fell through to the stock empty
+        # sources list with no redirect. MEASURED with the clear last: one Home
+        # tick fired 0 times, two fired 1.
+        if self.videos_was_visible and not videos:
+            self.latched = False
+            self.pending_path = ""
+        self.videos_was_visible = videos
+
+        # MEASURED on the office Fire TV (Kodi 22.0-BETA1, skin.estuary 4.1.0):
+        # while the Videos window is active this infolabel reports "", NOT the
+        # item that was focused on Home. So this sample only ever does anything
+        # while Home is up, and the empty reading must leave the latch ALONE
+        # rather than clear it, or the redirect would disarm itself the instant
+        # the window it is waiting for opens.
         item_id = _label("Container(%d).ListItem.Property(id)" % HOME_MENU_CONTROL)
         if item_id == HOME_ITEM_ID:
             self.latched = True
         elif item_id:
             self.latched = False
-
-        # Videos closed: the latch never outlives the window it was sampled for.
-        if self.videos_was_visible and not videos:
-            self.latched = False
-            self.pending_path = ""
-        self.videos_was_visible = videos
 
         if not videos:
             self.pending_path = ""

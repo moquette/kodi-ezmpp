@@ -1,3 +1,15 @@
+v2026.08.19.2
+- Fixes a miss in the new Home > Movies option. After you backed out of POV to the home
+  screen and pressed Movies again straight away, the second press did nothing useful and
+  you landed on the empty video sources list instead of POV. Waiting about a second and
+  pressing again worked, which made it look intermittent rather than broken.
+- The cause was internal bookkeeping clearing itself in the same pass that set it, so the
+  first moment after returning to the home screen was a blind spot. Every press now
+  works, including one made immediately after coming back.
+- Nothing else changes. The option is still off until you switch it on, still per box,
+  and still does nothing on any skin other than the plain built-in Estuary or on a box
+  without POV. Your backups, settings and custom menu are untouched.
+
 v2026.08.19.1
 - New Home Menu tab in this add-on's settings, with one option: "Send Home > Movies
   straight to POV (stock Estuary only)". It is OFF on every box until you switch it on.
