@@ -31,12 +31,6 @@ class Monitor(xbmc.Monitor):
     def onSettingsChanged(self):
         maintenance.logMaintenance("onSettingsChanged")
         maintenance.determineNextMaintenance()
-        # LAST, and only ever additive: switching the Home > Movies redirect on
-        # starts it without a Kodi restart. Deliberately after the maintenance
-        # calls above, so even a catastrophic failure here cannot cost them.
-        # Switching it OFF is handled by the poller itself, which re-reads the
-        # setting and exits.
-        _maybe_start_home_movies_redirect(self)
 
 
 # This service opens NO dialog at boot, and therefore knows nothing about any skin.
@@ -54,67 +48,6 @@ class Monitor(xbmc.Monitor):
 # answered, and Kodi's API cannot tell a destroyed dialog from a cancelled one, so an
 # unattended boot prompt is unanswerable by construction. Boot work here must be
 # silent and complete on its own.
-#
-# THE ONE EXCEPTION TO "KNOWS NOTHING ABOUT ANY SKIN", AND WHY IT IS NOT A CONTRADICTION
-# --------------------------------------------------------------------------------------
-# The optional Home > Movies redirect (resources/lib/modules/home_movies_redirect.py)
-# DOES read one stock Estuary infolabel. The rule above still stands, because the two
-# couplings are not the same kind of thing:
-#
-#   * The coupling DELETED above was a TIMING dependency, and it was DESTRUCTIVE when
-#     it was wrong: it waited out a skin's deferred menu rebuild before showing a
-#     dialog, the rebuild ended in ReloadSkin(), the dialog was destroyed, and Kodi's
-#     API cannot tell a destroyed dialog from a cancelled one. Being wrong produced an
-#     unanswerable prompt.
-#
-#   * The redirect's coupling is READ-ONLY and FAILS SAFE. It reads
-#     Container(9000).ListItem.Property(id) and writes nothing to the skin. On any skin
-#     without control 9000, that infolabel returns an empty string, its latch is never
-#     armed, and the redirect never fires. Being wrong is indistinguishable from the
-#     feature being switched off.
-#
-# It is also OPT-IN and OFF BY DEFAULT, and the import below is LAZY on purpose. This
-# file has start="startup" on every box in the fleet, and Monitor.__init__ above already
-# drives determineNextMaintenance(); a module-level import here would let a syntax or
-# import error in the redirect cost every box scheduled maintenance, the post-restore
-# check and the stale-key migration, including the boxes that never opted in. OFF must
-# mean nothing runs and nothing is imported, not a cheap poll.
-#
-# Do not delete the redirect module because this comment says the service knows nothing
-# about skins, and do not delete this comment because the module exists. Both are right.
-
-# Keep EQUAL to home_movies_redirect.SETTING_ID. They cannot share a constant: reading
-# the setting here is precisely what avoids importing that module on an opted-out box.
-_REDIRECT_SETTING_ID = "homemenu.movies_redirect"
-
-
-def _home_movies_redirect_enabled():
-    """True only when the user opted in. Never raises, defaults to off."""
-    try:
-        return xbmcaddon.Addon().getSetting(_REDIRECT_SETTING_ID) == "true"
-    except Exception:
-        return False
-
-
-def _maybe_start_home_movies_redirect(monitor):
-    """Start the redirect poller, but only for a box that asked for it.
-
-    Returns the thread, or None. Every failure mode here is a silent None: this is
-    a cosmetic navigation convenience and it does not get to break a maintenance
-    service."""
-    if not _home_movies_redirect_enabled():
-        return None
-    try:
-        from resources.lib.modules import home_movies_redirect
-
-        return home_movies_redirect.start(monitor)
-    except Exception as e:
-        xbmc.log(
-            "ezmaintenanceplus: home Movies redirect failed to start %s: %s"
-            % (type(e).__name__, e),
-            level=xbmc.LOGWARNING,
-        )
-        return None
 
 
 # REMOVED 2026-07-22: _CONTRACT_FILES, _contract_fingerprint,
@@ -617,12 +550,6 @@ if __name__ == "__main__":
                 % (type(e).__name__, e),
                 level=xbmc.LOGWARNING,
             )
-
-    # Opt-in Home > Movies redirect. Started LAST, after every boot step above has
-    # already run, so nothing it does can delay or displace maintenance, the
-    # post-restore check or the stale-key migration. On a box that never opted in
-    # this is one settings read and an immediate return, with no import.
-    _maybe_start_home_movies_redirect(monitor)
 
     while not monitor.abortRequested():
         # The auto-clean schedule is measured in days; a 60s tick is plenty.

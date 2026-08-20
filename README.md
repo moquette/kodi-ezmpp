@@ -146,10 +146,6 @@ match and a proxy release (`python3 _tools/release.py --proxy`) to actually ship
 see that repo's `CLAUDE.md` and `~/Code/moquette/kodi/.claude/skills/ezm-backup-doctor/SKILL.md` for the
 exact steps and the current gap between "committed" and "released" if one exists.
 
-**Rolling back:** see [`ROLLBACK.md`](ROLLBACK.md). It is not the reverse of
-releasing. A box cannot downgrade from the repo, and the fleet auto-installs
-updates, so a feature toggle that defaults to off is the only fast rollback.
-
 ## Install / use it with a network share
 
 1. Install the zip in Kodi: **Add-ons -> Install from zip file** (you may need Settings

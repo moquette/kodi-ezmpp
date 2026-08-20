@@ -120,11 +120,3 @@ msgstr ""
 msgctxt "#30062"
 msgid "Keep repositories"
 msgstr ""
-
-msgctxt "#30063"
-msgid "Home Menu"
-msgstr ""
-
-msgctxt "#30064"
-msgid "Send Home > Movies straight to POV (stock Estuary only)"
-msgstr ""

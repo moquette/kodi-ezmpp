@@ -169,14 +169,14 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
   `release.py` automation expects. Never run that automation against this add-on's
   news; it has corrupted the changelog before (~190 lines mangled in one run).
 
-- **Rolling back a release is NOT symmetric with shipping one. Read
-  `ROLLBACK.md` BEFORE you publish.** A box cannot downgrade from the repo:
-  `repo/_tools/generate_repo.py` prunes superseded zips so the catalog only ever
-  offers one version, and the fleet runs `general.addonupdates` = 0
-  (AUTO_UPDATES_ON), so a hand-installed older zip silently re-upgrades itself on
-  the next repo check. A feature setting that defaults to OFF is the only fast
-  rollback; anything else means git revert plus a republish of BOTH this repo and
-  the hosted mirror.
+- **A box cannot DOWNGRADE from the repo, so withdrawing a feature means shipping a
+  NEWER version with it removed.** Two measured reasons: `repo/_tools/generate_repo.py`
+  prunes superseded zips on every generate, so the catalog only ever offers one version
+  for a box to pick; and the fleet runs `general.addonupdates` = `0`, which Kodi's
+  `system/settings/settings.xml` documents as AUTO_UPDATES_ON, so a hand-installed older
+  zip silently re-upgrades itself on the next repo check. Do not confuse that setting
+  with `addons.updatemode`, which is the unknown-sources policy and unrelated. Verify a
+  box with `Settings.GetSettingValue` over JSON-RPC.
 
 ## The tvOS/Apple TV storage rules (read before touching `nsud.py`/`nsub.py`/`wiz.py`)
 

@@ -183,15 +183,6 @@
 				</setting>
 			</group>
 		</category>
-		<category id="homemenu" label="30063">
-			<group id="1">
-				<setting id="homemenu.movies_redirect" type="boolean" label="30064">
-					<level>0</level>
-					<default>false</default>
-					<control type="toggle" />
-				</setting>
-			</group>
-		</category>
 		<category id="freshstart" label="30003">
 			<group id="1">
 				<setting id="freshstart.keep_sources" type="boolean" label="30061">
