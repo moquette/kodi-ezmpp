@@ -1,3 +1,15 @@
+v2026.08.19.3
+- Removes the Home Menu option added in 2026.08.19.1 and fixed in 2026.08.19.2. Both of
+  those releases are withdrawn.
+- The Home Menu tab is gone from this add-on's settings, and the "Send Home > Movies
+  straight to POV (stock Estuary only)" option is gone with it.
+- Nothing in the add-on watches the home screen any more. Pressing Movies on Kodi's home
+  screen does exactly what Kodi itself does, on every skin and every box, which is what
+  it did before 2026.08.19.1.
+- There is nothing to switch off and nothing to undo. A box that had the option turned on
+  goes back to normal on its own when this version installs, with no restart.
+- Your backups, settings and custom menu are untouched.
+
 v2026.07.31.1
 - The video cache buffer returns to Kodi's own default of 20 MB when you restore a
   backup or run a Fresh Start. Before this, a restored box kept the buffer it had been
