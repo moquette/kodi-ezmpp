@@ -191,10 +191,16 @@ them without understanding why they exist:
 - `tests/test_no_raw_userdata_writer.py` - a chokepoint lint (AST-based) that fails
   if any function writes a userdata/`addon_data` XML with plain `open()`/
   `xbmcvfs.File()` without calling `nsud.persist_one`.
-- `tests/fake_kodi_sandbox_io.py` + `tests/test_tvos_sandbox_io_contract.py` - a
-  two-layer tvOS storage fake (NSUserDefaults keys + a real POSIX tree) that can
+- `tests/fake_kodi_storage.py` + `tests/test_fake_kodi_storage.py` - the two-layer
+  tvOS storage fake (NSUserDefaults keys + a real POSIX tree) whose `state()` can
   represent "key exists, disk file gone" - the shape a plain-dict fake cannot
   express, which is why 33 tests once stayed green through a real bug.
+- `tests/fake_kodi_sandbox_io.py` + `tests/test_tvos_sandbox_io_contract.py` - a
+  DIFFERENT bug family, per its own docstring: the App Sandbox cross-layer READ
+  quirk for local and `special://temp` files, which are not under userdata. An
+  earlier revision of this file credited it with the two-layer userdata model;
+  that was wrong, and the plan review that caught it is recorded in
+  `docs/settings-profile-plan.md` section 8.2.
 
 Two corrected facts, now consistent everywhere in this project - do not let either
 regress:

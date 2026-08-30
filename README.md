@@ -80,12 +80,15 @@ again:
   `open()`/`xbmcvfs.File()` without routing through `nsud.persist_one`. Written after an
   adversarial review found the exact same bug class, unguarded, in a second function
   (`boxsetup._write_weather_settings`) that nobody had thought to test.
-- **`tests/fake_kodi_sandbox_io.py`** - a two-layer tvOS storage fake (NSUserDefaults
+- **`tests/fake_kodi_storage.py`** - the two-layer tvOS storage fake (NSUserDefaults
   keys + a real POSIX tree, transcribed from Kodi's own source) so tests can represent
   the state that actually causes data loss ("key exists, disk file gone") - a plain dict
   fake cannot express this, which is why 33 tests once stayed green through a real bug.
-  `tests/test_tvos_sandbox_io_contract.py` covers the `ControlImage` write-through
-  requirement and the foreign-local-VFS-read bug on top of it.
+  `tests/test_fake_kodi_storage.py` guards the fake itself. The similarly named
+  `tests/fake_kodi_sandbox_io.py` models a different bug family (the App Sandbox
+  cross-layer READ quirk for local and `special://temp` files, which are not under
+  userdata); `tests/test_tvos_sandbox_io_contract.py` covers the `ControlImage`
+  write-through requirement and the foreign-local-VFS-read bug on top of it.
 - **`service.py`'s boot-time `__pycache__` purge** - CPython invalidates a `.pyc` by the
   source's recorded mtime AND size, and `tools/build.py` stamps every zip entry
   1980-01-01 for reproducible builds, so across builds the mtime half is constant and
