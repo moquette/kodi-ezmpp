@@ -60,6 +60,14 @@ USERDATA_HINTS = (
 # The sanctioned exits.
 NSUD_CALLS = {"persist_one", "rewrite_userdata_xml"}
 
+# Calling one of these IS writing a Kodi-read userdata file, by definition -
+# `write_guisetting`'s single job is rewriting guisettings.xml - so a call to
+# one counts as both the write AND the userdata mention, and the calling
+# function must carry its own nsud call (wiz._apply_boot_skin is the reference).
+# Added 2026-08-30, before profile.py landed, because the path reaches these as
+# an ARGUMENT: no string constant, no *_path() helper, nothing else fires.
+WRITE_DELEGATES = {"write_guisetting"}
+
 # Deliberate exemptions. Each MUST carry a reason. Do not add to this list to silence a
 # finding - a finding here means a file Kodi reads may be silently shadowed on Apple TV.
 ALLOWLIST = {
@@ -71,6 +79,21 @@ ALLOWLIST = {
     # because the setting is off on the whole fleet and the correct fix is to retire
     # FIX_SPECIAL entirely; tracked, not silently blessed.
     ("wiz.py", "FIX_SPECIAL"),
+    # tools._set_devicename is a deliberate both-halves write, surfaced when the
+    # lint learned to see write_guisetting delegates (2026-08-30). Its durable
+    # half on tvOS is the LIVE Settings.SetSettingValue (the NSUserDefaults key
+    # Kodi reads tracks the live store at the clean-close flush); the
+    # write_guisetting file half exists ONLY for the Fire TV / Android unclean
+    # kill, is documented in the function as best-effort, and on tvOS is either
+    # a no-op (POSIX copy dropped after vectoring; write_guisetting returns
+    # False on a missing file) or an edit of an already-shadowed dead copy.
+    # Adding persist_one here WITHOUT the re-materialize step would vector a
+    # possibly stale POSIX guisettings.xml over the key Kodi actually reads -
+    # the shadowing bug in reverse. The sanctioned full pattern
+    # (re-materialize, edit, persist_one) is wiz._apply_boot_skin; if
+    # _set_devicename ever needs file-half durability on tvOS, it adopts that
+    # pattern rather than a bare persist_one.
+    ("tools.py", "_set_devicename"),
 }
 
 
@@ -83,7 +106,10 @@ def _py_files():
 
 
 def _is_write_call(node):
-    """open(..., 'w'|'wb') or xbmcvfs.File(..., 'w')."""
+    """open(..., 'w'|'wb'), xbmcvfs.File(..., 'w'), any `.write(...)` attribute
+    call (an ElementTree `tree.write(path)` is a full-file rewrite; a file
+    object's `.write(data)` only appears inside an open() that already
+    matched), or a call to a WRITE_DELEGATES member."""
     if not isinstance(node, ast.Call):
         return False
     fn = node.func
@@ -92,6 +118,10 @@ def _is_write_call(node):
         if isinstance(fn, ast.Name)
         else (fn.attr if isinstance(fn, ast.Attribute) else "")
     )
+    if name in WRITE_DELEGATES:
+        return True
+    if name == "write" and isinstance(fn, ast.Attribute) and node.args:
+        return True
     if name not in ("open", "File"):
         return False
     for arg in list(node.args[1:]) + [
@@ -109,10 +139,14 @@ def _mentions_userdata(fnode):
             low = n.value.lower()
             if any(h in low for h in USERDATA_HINTS):
                 return True
-        # a call to a *_settings_path()/_weather_settings_path() style helper
         if isinstance(n, ast.Call):
             fn = n.func
             nm = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+            # a WRITE_DELEGATES call is a userdata write by definition; the path
+            # arrives as an argument, so no string constant can be here to see.
+            if nm in WRITE_DELEGATES:
+                return True
+            # a call to a *_settings_path()/_weather_settings_path() style helper
             if nm.endswith("_path") and (
                 "settings" in nm or "userdata" in nm or "profile" in nm
             ):
@@ -197,6 +231,89 @@ def test_the_known_good_pattern_is_present():
 
 def _is_write_call_in(fnode):
     return any(_is_write_call(n) for n in ast.walk(fnode))
+
+
+# --------------------------------------------------------------------------- #
+# The 2026-08-30 extension: writes the ORIGINAL lint could not see.
+#
+# The settings-profile plan (docs/settings-profile-plan.md 7.3) found the gap
+# before the code that would have fallen through it was written:
+# `_kodisettings.write_guisetting` persists with `tree.write(...)` and calls no
+# nsud function, so a module doing its class A file half through an ElementTree
+# helper and forgetting the vector would pass this lint, pass every test, and
+# fail only on Apple TV - the 2026-07-13 `boxsetup._write_weather_settings`
+# shape with a different verb. Two closures, landed BEFORE profile.py:
+#
+#   1. `_is_write_call` now also matches an attribute call named `write` with
+#      at least one argument (`tree.write(path)`, `ElementTree(root).write(p)`).
+#   2. `WRITE_DELEGATES`: calling `write_guisetting` IS writing userdata by
+#      definition (its one job is rewriting guisettings.xml), so such a call
+#      counts as both the write and the userdata mention, and the caller must
+#      carry its own nsud call - exactly what `wiz._apply_boot_skin` does.
+# --------------------------------------------------------------------------- #
+
+_TREE_WRITE_OFFENDER = """
+def sneaky(values):
+    import xml.etree.ElementTree as ET
+    path = "/x/userdata/guisettings.xml"
+    tree = ET.parse(path)
+    tree.write(path)
+"""
+
+_DELEGATE_OFFENDER = """
+def sneaky(path, sid, value):
+    from resources.lib.modules import _kodisettings
+    _kodisettings.write_guisetting(path, sid, value)
+"""
+
+_DELEGATE_COMPLIANT = """
+def fine(path, sid, value):
+    from resources.lib.modules import _kodisettings, nsud
+    _kodisettings.write_guisetting(path, sid, value)
+    nsud.persist_one("guisettings.xml")
+"""
+
+
+def _offends(src):
+    tree = ast.parse(src)
+    for fnode in ast.walk(tree):
+        if not isinstance(fnode, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        writes = any(_is_write_call(n) for n in ast.walk(fnode))
+        if writes and _mentions_userdata(fnode) and not _calls_nsud(fnode):
+            return True
+    return False
+
+
+def test_lint_sees_an_elementtree_write():
+    """tree.write(path) with a userdata path and no nsud call must be an offender.
+
+    This exact shape is how `_kodisettings.write_guisetting` persists, and before
+    the 2026-08-30 extension it was invisible to `_is_write_call` (which matched
+    only callables named `open` or `File`)."""
+    assert _offends(_TREE_WRITE_OFFENDER), (
+        "the lint no longer sees an ElementTree .write() as a write - the "
+        "settings-profile class A file half could ship without its vector again"
+    )
+
+
+def test_lint_sees_a_write_guisetting_delegate():
+    """Calling write_guisetting without nsud must be an offender even with no
+    userdata string in sight: the path arrives as an argument, so neither the
+    string-constant nor the *_path() heuristic can fire, and only the delegate
+    rule catches it."""
+    assert _offends(_DELEGATE_OFFENDER), (
+        "the lint no longer treats write_guisetting as a userdata write - "
+        "callers can rewrite guisettings.xml with no vector and pass"
+    )
+
+
+def test_write_guisetting_plus_persist_one_is_compliant():
+    """The sanctioned pattern (write_guisetting then persist_one, as
+    wiz._apply_boot_skin does) must NOT be flagged."""
+    assert not _offends(_DELEGATE_COMPLIANT), (
+        "the lint flags the known-good write_guisetting + persist_one pattern"
+    )
 
 
 @pytest.mark.parametrize("mod,fn", sorted(ALLOWLIST))
