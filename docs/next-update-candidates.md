@@ -116,7 +116,7 @@ single-box test cannot see the shared-AP/NFS cost that is the actual risk.
 - **The GUI `chunksize` is silently ignored when the source reports its own**
   (`File.cpp:436-441`). On NFS sources the fleet's 131072 is likely dead.
 
-### Open item, NOT verified: does the IPTV path even use CFileCache?
+### CLOSED 2026-08-30: no stakes left - readfactor is settled do-not-raise and v2026.07.31.1 resets the buffer to Kodi's default on restore/Fresh Start, so no tuning decision depends on the answer. (Originally: open item, NOT verified - does the IPTV path even use CFileCache?)
 
 `inputstream.adaptive` and PVR add-ons are believed to do their own HTTP fetching
 and never touch `CFileCache`, which would make every cache setting irrelevant to
@@ -134,7 +134,7 @@ fiction rather than the real bitrate.
 
 ---
 
-## 2. `memorysize` is set to values Kodi does not offer - VERIFY BEFORE CHANGING
+## 2. CLOSED 2026-08-30: shipped in v2026.07.19.3 (76a0dd4) - `_recommended_mb()` snaps to a size Kodi's GUI actually offers (`_snap_to_kodi_size`, tools.py). (Originally: `memorysize` is set to values Kodi does not offer - VERIFY BEFORE CHANGING)
 
 The fleet runs `memorysize` 200 (Apple TV) and 166 (Fire TV). **Neither is a
 selectable value.** Kodi's list (`ServicesSettings.cpp:45-70`) is 16, 20, 24, 32,
@@ -195,7 +195,7 @@ decides. Options not yet weighed: excluding POV settings from backup (breaks
 
 ---
 
-## 4. Two OPEN restore defects
+## 4. CLOSED 2026-08-30: both shipped - the skin-settings clobber was fixed in v2026.07.19.3 (be31322 re-applies restored skin settings in memory; only A3, making the restored skin live, stays open on an owner decision) and the post-restore prompt was fixed by DELETION in v2026.07.19.4 (the prompts no longer exist). (Originally: Two OPEN restore defects)
 
 Not restated here. See `restore-defects-2026-07-18.md` for the full record: the
 skin-settings clobber (root cause empirically confirmed, fleet-wide, not

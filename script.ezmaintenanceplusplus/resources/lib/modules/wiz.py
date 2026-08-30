@@ -22,7 +22,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 import zipfile
-from resources.lib.modules import control, maintenance, tools, ui
+from resources.lib.modules import control, maintenance, tools, ui, versiongate
 from datetime import datetime
 from resources.lib.modules.backtothefuture import unicode, PY2
 
@@ -174,12 +174,17 @@ def _failed_lines(failed, limit=10):
 
 def _write_manifest(zip_file, entries, failed):
     """Embed MANIFEST_NAME into the (still open) backup zip: when it was made, on
-    which OS, how many entries it holds, and EXACTLY which paths it could not
-    capture. A backup that is missing something must say so - restore() verifies
-    the archive against this and the owner tools display it."""
+    which OS and which Kodi major, how many entries it holds, and EXACTLY which
+    paths it could not capture. A backup that is missing something must say so -
+    restore() verifies the archive against this and the owner tools display it."""
     manifest = {
         "created": datetime.now().replace(microsecond=0).isoformat(),
         "source_os": _source_os(),
+        # The Kodi MAJOR this backup was made on (0 = could not be read).
+        # restore()'s version gate compares it with the running major before
+        # letting the archive's addons/ tree extract - an Omega addons/ tree
+        # laid over a Piers install un-rebuilds the box. See versiongate.py.
+        "kodi_version": versiongate.major(get_Kodi_Version()),
         "entries": int(entries),
         "failed": [unicode(f) for f in failed],
     }
@@ -371,7 +376,6 @@ def _destination():
 
 # BACKUP ZIP
 def backup(mode="full"):
-    KODIV = get_Kodi_Version()
     dest = _destination()
 
     if mode == "full":
@@ -1461,6 +1465,29 @@ def restore(
         pass
     _skip_fn = _extract_skip(anchor, skip_prefix)
 
+    # The Kodi-version gate (versiongate.py, self-contained by design): an
+    # archive whose addons/ tree was built on a DIFFERENT Kodi major - or one
+    # too old to say which (every backup made before the manifest carried
+    # kodi_version) - must not lay its add-ons and skins over this install.
+    # Userdata still restores in full; add-ons re-download from their
+    # repositories. Decided ONCE, here, outside _restore_pass, so the
+    # explanation dialog cannot fire a second time when the attempt loop runs
+    # a retry pass; spoken BEFORE any wipe or extract, so the user hears what
+    # the restore will not bring back while the box is still untouched.
+    _gate = versiongate.evaluate(manifest, get_Kodi_Version(), _names)
+    if _gate.blocked:
+        _rlog("restore: %s" % _gate.log_line)
+        _skip_fn = versiongate.wrap_skip(_skip_fn)
+        dialog.ok(AddonTitle, _gate.message)
+    # What the extract will actually lay down, for the post-restore triage:
+    # with the gate up, an addons/ wipe leftover must triage as residue, not
+    # as "overwritten by the archive" - the archive's copy never landed.
+    _restored_names = (
+        [n for n in _names if not versiongate.is_addons_member(n)]
+        if _gate.blocked
+        else _names
+    )
+
     def _restore_pass(pass_leftovers):
         """One full extract -> apply -> verify pass.
 
@@ -1610,6 +1637,10 @@ def restore(
             # working, not content the restore failed to place.
             if _is_secret_arc(rel) or rel.startswith(_SELF_ADDON_PREFIX):
                 return True
+            # Members the Kodi-version gate withheld: policy, decided up front
+            # and announced in its own dialog - not content that failed to land.
+            if _gate.blocked and versiongate.is_addons_member(rel):
+                return True
             return False
 
         unmapped = [n for n in _names if _skip_fn(n) and not _skipped_on_purpose(n)]
@@ -1750,7 +1781,7 @@ def restore(
                 from resources.lib.modules import restorecheck
 
                 ver_attention, _detail = restorecheck.verify_restored_state(
-                    pass_leftovers, _names, anchor
+                    pass_leftovers, _restored_names, anchor
                 )
             except Exception as e:
                 # verify_restored_state is documented never to raise; guard the IMPORT

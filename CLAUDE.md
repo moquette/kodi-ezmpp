@@ -133,7 +133,7 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
   `generate_repo.py` and the skin repo's `build_skin.py`. `./build.sh --check` builds
   twice and byte-compares.
 - **Tests are mandatory before any release.** Run
-  `/opt/homebrew/bin/python3 -m pytest tests/ -q` (670 tests + 3 xfail; the
+  `/opt/homebrew/bin/python3 -m pytest tests/ -q` (699 tests + 3 xfail; the
   system `python3` on this machine is 3.9, too old for this suite), and
   `ruff check tests/ tools/` must also be clean.
 - **Tool versions are pinned in `requirements-ci.txt` and `ruff.toml`**, which CI

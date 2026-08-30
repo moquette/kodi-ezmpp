@@ -166,7 +166,8 @@ def MAINTENANCE():
 # ##################################### OWNER TOOLS #########################################
 
 
-# The manifest wiz.backup embeds ({"created","source_os","entries","failed":[...]}).
+# The manifest wiz.backup embeds
+# ({"created","source_os","kodi_version","entries","failed":[...]}).
 BACKUP_MANIFEST_NAME = "backup_manifest.json"
 # Any entry under this addon_data path means the archive carries IPTV client state,
 # whether the zip is anchored at home/ ("userdata/addon_data/...") or at userdata/.
@@ -180,6 +181,9 @@ def analyze_backup_zip(zip_path):
       total_entries     - int, every member in the archive
       manifest_present  - bool, backup_manifest.json anywhere in the archive
       manifest_failed   - list[str], the manifest's "failed" list ([] if absent)
+      kodi_version      - int, the Kodi MAJOR the backup was made on (0 when the
+                          manifest is absent or predates the stamp; restore's
+                          version gate treats 0 as cross-major)
       iptv_present      - bool, any addon_data/pvr.iptvsimple/ entry
       composition       - {"userdata": n, "addons": n, "media": n, "other": n}
                           counted by each member's top-level path segment
@@ -193,6 +197,7 @@ def analyze_backup_zip(zip_path):
         "total_entries": 0,
         "manifest_present": False,
         "manifest_failed": [],
+        "kodi_version": 0,
         "iptv_present": False,
         "composition": {"userdata": 0, "addons": 0, "media": 0, "other": 0},
     }
@@ -223,6 +228,11 @@ def analyze_backup_zip(zip_path):
                 failed = data.get("failed")
                 if isinstance(failed, list):
                     report["manifest_failed"] = [str(item) for item in failed]
+                try:
+                    kv = int(float(data.get("kodi_version")))
+                except (TypeError, ValueError):
+                    kv = 0
+                report["kodi_version"] = kv if kv > 0 else 0
     return report
 
 
@@ -246,6 +256,12 @@ def format_backup_report(report, zip_name=""):
         lines.append("Manifest failed items (%d): %s" % (len(failed), shown))
     elif report["manifest_present"]:
         lines.append("Manifest failed items: none")
+    if report["manifest_present"]:
+        kv = report.get("kodi_version") or 0
+        lines.append(
+            "Made on Kodi: %s"
+            % (kv if kv > 0 else "not recorded (backup predates the version stamp)")
+        )
     lines.append(
         "IPTV (pvr.iptvsimple) data: %s" % ("yes" if report["iptv_present"] else "no")
     )
