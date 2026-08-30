@@ -1,0 +1,13 @@
+# Class D: one line per add-on, "<id>|<zip relative to the bundle>|<enable mode>".
+# The zips are byte-identical copies of the official hub artifacts (verified by
+# sha256 against repo/addons at authoring time), staged into
+# special://home/addons and enabled through Addons.SetAddonEnabled - never
+# InstallAddon, which can prompt, runs async, and cannot resolve anything
+# before the repository index has ever been fetched.
+#
+# enable mode "last": the T7B repository is enabled as the FINAL apply step,
+# after everything else, because the hub advertises this add-on's own releases
+# and general.addonupdates is not in the payload - enabling it earlier would
+# let Kodi update EZ Maintenance++ while EZ Maintenance++ is mid-apply.
+script.image.resource.select|addons/script.image.resource.select-3.0.2.zip|normal
+repository.tony7bones|addons/repository.tony7bones-3.0.0.zip|last

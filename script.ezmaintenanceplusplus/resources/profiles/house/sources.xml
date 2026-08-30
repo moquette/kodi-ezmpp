@@ -1,0 +1,30 @@
+<sources>
+    <!-- Class C: source ENTRIES ONLY, never a whole document. This file is
+         MERGED into the box's live sources.xml (dedupe on name AND path,
+         same-URL consolidation); it is never copied onto a box, because a
+         whole document would delete every source the box already had. The
+         loader REJECTS a <default> stub or any section other than <files>
+         here, precisely so this file can never quietly become copyable.
+
+         Path rules, both load-bearing and enforced at load: never a port
+         (Kodi's own browse dialog hands back nfs://host:2049/... which breaks
+         directory listing and registers as a DIFFERENT source), and never a
+         missing trailing slash (Kodi dedupes on the exact path string). -->
+    <files>
+        <source>
+            <name>.T7B</name>
+            <path pathversion="1">https://tony7bones.github.io/</path>
+            <allowsharing>true</allowsharing>
+        </source>
+        <source>
+            <name>KodiShare</name>
+            <path pathversion="1">nfs://192.168.7.2/Users/moquette/Kodi/Share/</path>
+            <allowsharing>true</allowsharing>
+        </source>
+        <source>
+            <name>KodiBackup</name>
+            <path pathversion="1">nfs://192.168.7.2/Users/moquette/Kodi/Backup/</path>
+            <allowsharing>true</allowsharing>
+        </source>
+    </files>
+</sources>

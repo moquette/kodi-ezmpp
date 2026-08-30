@@ -1,0 +1,6 @@
+{
+    "name": "House",
+    "schema_version": 1,
+    "bundle_version": "2026.08.30",
+    "description": "The owner's standard box: web control at kodi/kodi:8080, remote control on, add-ons from any repository, guide and language defaults, the .T7B repository and the mini's NFS shares, and this add-on's backup folder for the device class."
+}

@@ -1,0 +1,24 @@
+<settings version="2">
+    <!-- Guide default select action. This is an enum, not a boolean:
+         0 context menu, 1 switch to channel, 2 info (Kodi's default),
+         3 record, 5 smart select. -->
+    <setting id="epg.selectaction">1</setting>
+
+    <!-- Show ".." parent-folder entries in file lists. Kodi 22's stock value
+         is true (MEASURED on a first-run Piers profile, 2026-08-30); pinned so
+         a future default cannot move it. NOTE: bootstrapper/defaults.txt says
+         "DISABLED" and plan open item 1 recommended false; the value here is
+         the current settings tree's, and flipping it is a one-line owner call. -->
+    <setting id="filelists.showparentdiritems">true</setting>
+
+    <!-- Wait this long into playback before stamping a channel's last-watched
+         time, so surfing past a channel does not count as having watched it.
+         Seconds; 0 (Kodi's default) stamps immediately at playback start. -->
+    <setting id="pvrplayback.delaymarklastwatched">360</setting>
+
+    <!-- Playlists live in the profile rather than beside the library. This id
+         is ABSENT from Settings.GetSettings at every level yet fully settable
+         over JSON-RPC (measured 2026-08-30), which is why the authoring-gate
+         catalog is a union rather than a plain GetSettings capture. -->
+    <setting id="system.playlistspath">special://profile/playlists/</setting>
+</settings>

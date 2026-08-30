@@ -1,0 +1,7 @@
+<settings version="2">
+    <!-- Settings > Interface > Show RSS news feeds. Kodi's stock value is
+         false. The feed itself is whatever userdata/RssFeeds.xml holds, which
+         Kodi writes on first run, so enabling this without editing that file
+         gives the default Kodi feed rather than a blank ticker. -->
+    <setting id="lookandfeel.enablerssfeeds">true</setting>
+</settings>

@@ -1,0 +1,13 @@
+<settings version="2">
+    <!-- Unknown sources on, so add-ons can be installed from zip.
+         updatemode is 0 for official repositories only and 1 for any
+         repository. It only takes effect while unknownsources is true, so
+         unknownsources must precede it.
+
+         addons.unknownsources is CONFIRM-GATED (string 36618), fired from
+         CAddonSystemSettings::OnSettingChanged AFTER the value commits; any
+         answer but YES sets it back to false. The apply engine answers the
+         confirm itself; see profile.CONFIRM_GATED. -->
+    <setting id="addons.unknownsources">true</setting>
+    <setting id="addons.updatemode">1</setting>
+</settings>

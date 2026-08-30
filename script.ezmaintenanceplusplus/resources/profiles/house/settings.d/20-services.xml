@@ -1,0 +1,31 @@
+<settings version="2">
+    <!-- Web server on with basic auth, so JSON-RPC is reachable at
+         http://<box>:8080/jsonrpc as kodi/kodi. The whole fleet's tooling
+         verifies boxes through this endpoint.
+
+         services.webserver is CONFIRM-GATED on Kodi 22: enabling it fires a
+         yes/no warning from CNetworkServices::OnSettingChanging (string 36632)
+         and the change is vetoed unless the answer is YES. The apply engine
+         knows this id is gated and answers the confirm itself; see
+         profile.CONFIRM_GATED and docs/settings-profile-experiments-2026-08-30.md. -->
+    <setting id="services.webserver">true</setting>
+    <setting id="services.webserverport">8080</setting>
+    <setting id="services.webserverauthentication">true</setting>
+    <setting id="services.webserverusername">kodi</setting>
+    <setting id="services.webserverpassword">kodi</setting>
+
+    <!-- "Allow remote control from applications on other systems".
+         esallinterfaces is a no-op unless esenabled is also true. esenabled is
+         already true by stock default, but pin it so a future Kodi flipping
+         the default cannot silently break remote control. ORDER MATTERS:
+         esenabled must be applied before esallinterfaces (parent before
+         dependent), which is why it appears first here and why the loader
+         keeps position-from-first when an overlay overrides a value.
+
+         esallinterfaces is also CONFIRM-GATED (string 36633), and on top of
+         that it restarts the JSON-RPC TCP server when it applies: setting it
+         OVER remote TCP deadlocks that server against itself (measured on the
+         bench, 2026-08-30, SIGKILL required). It is only ever set in-process. -->
+    <setting id="services.esenabled">true</setting>
+    <setting id="services.esallinterfaces">true</setting>
+</settings>
