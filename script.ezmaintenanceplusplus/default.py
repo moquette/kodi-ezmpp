@@ -44,6 +44,24 @@ def CATEGORIES():
         ADDON_FANART,
         "",
     )
+    # ONE row, not a folder. "Set up this box" was a folder of five items of
+    # which one was ever used, deleted for that reason in e52d170; that name is
+    # burned and must not be reused (a stale favourite pointing at the old
+    # action still routes to a silent no-op above). The profile's NAME goes in
+    # the confirm dialog, not beside the row: the root menu is a plugin
+    # directory where label2 rendering is skin-dependent, and
+    # tests/test_no_skin_specific_listitem_property.py exists to stop exactly
+    # that coupling (plan 6.1).
+    CreateDir(
+        "Apply Settings Profile",
+        "url",
+        "settings_profile",
+        ADDON_ICON,
+        ADDON_FANART,
+        "One command that sets up a fresh box with the standard settings. "
+        "Additive: nothing is removed, and a box that already matches is left "
+        "alone.",
+    )
     CreateDir(
         "Backup/Restore",
         "ur",
@@ -138,6 +156,93 @@ def MAINTENANCE():
         ADDON_FANART,
         "",
     )
+
+
+def APPLY_SETTINGS_PROFILE():
+    """The one-row Settings Profile flow (plan 6.2): one confirm, a progress
+    dialog with real step messages, apply in 7.4 order, in-flow verify, ONE
+    result message folded into the restart offer, no questions in between.
+
+    The engine lives in resources/lib/modules/profile.py and never imports
+    xbmcgui; this function owns every dialog. A partial result is reported as
+    partial, never as complete."""
+    from resources.lib.modules import profile, tools
+
+    try:
+        bundle = profile.load(
+            profile.default_bundle_dir(), profile.detect_device_class()
+        )
+    except profile.ProfileError as e:
+        for problem in e.problems:
+            xbmc.log(
+                "%s : settings profile bundle invalid: %s" % (AddonID, problem),
+                level=xbmc.LOGERROR,
+            )
+        ui.error(
+            "The settings profile bundle failed validation, so nothing was "
+            "applied. The log has the details."
+        )
+        return
+    ops = profile.plan(bundle)
+    if not ui.confirm(
+        "Apply the %s settings profile?\n"
+        "This sets up the box the standard way: web control and remote "
+        "control on, add-ons allowed from any repository, guide and language "
+        "defaults, the Tony.7.Bones repository, the KodiShare and KodiBackup "
+        "sources, and this add-on's backup folder.\n"
+        "Nothing is removed. Kodi asks to restart when it finishes."
+        % bundle["name"],
+        yeslabel="Apply",
+        nolabel="Cancel",
+    ):
+        return
+    with ui.Progress("Applying the %s settings profile" % bundle["name"]) as p:
+        record = profile.apply(ops, on_step=p.items)
+        # In-flow verification (plan 7.6): read the live state back rather
+        # than trusting what apply just reported. Class C is deliberately not
+        # here - Files.GetSources cannot see an on-disk write until the next
+        # boot, so its live confirmation belongs to the boot check.
+        vitems = profile.verify(ops)
+    items = record["items"] + vitems
+    ok, total, failures = profile.summarize(items)
+    for w in record["warnings"]:
+        xbmc.log(
+            "%s : settings profile warning: %s" % (AddonID, w),
+            level=xbmc.LOGWARNING,
+        )
+    for it in failures:
+        xbmc.log(
+            "%s : settings profile %s: %s -> %s (%s)"
+            % (AddonID, it["kind"], it["label"], it["outcome"], it["detail"]),
+            level=xbmc.LOGWARNING,
+        )
+    # Arm the one-shot boot check that confirms after the restart what cannot
+    # be confirmed now (the sources). A failed marker write is LOUD: 6.3
+    # promises sources take effect after the reopen, and if this write fails
+    # silently nothing ever checks that promise (plan 7.7).
+    payload = {
+        "box": xbmc.getInfoLabel("Network.MacAddress") or "",
+        "created": time.time(),
+        "sources": [path for _name, path in bundle["sources"]],
+        "settings": dict(bundle["class_a"]),
+    }
+    if not tools.mark_profile_check_pending(payload):
+        xbmc.log(
+            "%s : settings profile boot-check marker could NOT be written; "
+            "the post-restart source check will not run" % AddonID,
+            level=xbmc.LOGWARNING,
+        )
+    if not failures:
+        status = (
+            "Settings profile applied. The media sources appear after Kodi "
+            "reopens."
+        )
+    else:
+        status = (
+            "Settings profile partly applied (%d of %d). Nothing was removed; "
+            "the log has the details." % (ok, total)
+        )
+    ui.ask_restart(status)
 
 
 # RETIRED 2026-07-22: the "Set up this box" folder, ALL FIVE ITEMS, and the
@@ -869,6 +974,9 @@ elif action == "settings":
 
 elif action == "fresh_start":
     FRESHSTART()
+
+elif action == "settings_profile":
+    APPLY_SETTINGS_PROFILE()
 
 elif action == "maintenance":
     MAINTENANCE()

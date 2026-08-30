@@ -1060,8 +1060,16 @@ def test_plugin_root_menu_renders(monkeypatch, tmp_path):
     # 10 -> 9 on 2026-07-21 when the One-Tap Restore row was removed with the feature;
     # 9 -> 8 on 2026-07-22 when "Set up this box" was retired: the owner used one of
     # its five items, and that one - adding the repo and the mini NFS shares - is
-    # configuration, so it became the Media Sources tab of the add-on's settings.)
-    assert len(rec.dir_items) == 8
+    # configuration, so it became the Media Sources tab of the add-on's settings;
+    # 8 -> 9 on 2026-08-30 when "Apply Settings Profile" landed: ONE row, not a
+    # folder - the plan's 6.1 is explicit that rebuilding a folder rebuilds the
+    # outcome that got "Set up this box" deleted.)
+    assert len(rec.dir_items) == 9
+    settings_profile_urls = [u for u in rec.dir_items if "settings_profile" in u]
+    assert len(settings_profile_urls) == 1, (
+        "Apply Settings Profile must be exactly ONE row (plan 6.1): a folder "
+        "of setup items is the shape the owner already deleted once"
+    )
     assert rec.end_dirs == [True]
     # Parse the action out of each url rather than substring-matching it: "device_name"
     # is a prefix of "device_nameXX", so a substring test passes against a renamed or

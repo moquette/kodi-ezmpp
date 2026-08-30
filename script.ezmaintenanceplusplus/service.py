@@ -117,6 +117,7 @@ def _startup_sequence(monitor):
     _purge_stale_bytecode()
     _maybe_resume_paused_pvr()
     _maybe_restore_check(monitor)
+    _maybe_profile_check(monitor)
 
 
 def _wait_kodi_ready(monitor, timeout=120):
@@ -346,6 +347,120 @@ def _maybe_restore_check(monitor):
     finally:
         try:
             tools.clear_restore_check_marker()
+        except Exception:
+            pass
+
+
+def _maybe_profile_check(monitor):
+    """On the FIRST boot after Apply Settings Profile, confirm the one thing
+    the apply flow could not: the merged file manager sources, which Kodi only
+    reads at startup. Also spot-checks the class A values now live.
+
+    The rules, every one from a bug already paid for (plan 7.7):
+    - READS AND REPORTS ONLY. It never installs, stages, enables or
+      re-applies; a finding tells the owner to run the command again.
+    - SILENT on success - the rule that ended the false "needs attention" era
+      on Apple TV. The clean verdict goes to the log.
+    - The marker is stamped with the writing box's MAC; a marker that rode a
+      backup onto a DIFFERENT box is cleared without running (this box was
+      never promised anything).
+    - Sources are compared BY PATH via Files.GetSources, which is Kodi's
+      in-memory list and safe inside the shutdown budget.
+      Files.GetDirectory is deliberately absent: two entries are NFS paths to
+      the mini, and with the mini powered off that call blocks on the mount
+      timeout inside an abort-gated service thread, turning "the media server
+      is off tonight" into "needs attention".
+    - Cleared REGARDLESS of outcome, and the GUI wait sits OUTSIDE the
+      try/finally so an aborted boot does not burn the one-shot marker."""
+    try:
+        from resources.lib.modules import tools
+    except Exception:
+        return
+    try:
+        if not tools.profile_check_pending():
+            return
+    except Exception:
+        return
+    payload = tools.read_profile_check()
+    if not payload:
+        # Unreadable marker: nothing can be checked, so nothing is owed.
+        try:
+            tools.clear_profile_check_marker()
+        except Exception:
+            pass
+        return
+    stamp = (payload.get("box") or "").strip().lower()
+    mac = ""
+    try:
+        mac = (xbmc.getInfoLabel("Network.MacAddress") or "").strip().lower()
+    except Exception:
+        pass
+    if stamp and mac and ":" in mac and stamp != mac:
+        try:
+            tools.clear_profile_check_marker()
+        except Exception:
+            pass
+        xbmc.log(
+            "%s : profile boot-check marker was written by another box (%s); "
+            "cleared without running" % (AddonID, stamp),
+            level=xbmc.LOGINFO,
+        )
+        return
+    # GUI wait OUTSIDE the try/finally: an aborted boot must not consume the
+    # one-shot marker (the check never ran, so it is still owed).
+    if not _wait_kodi_ready(monitor):
+        return
+    try:
+        from resources.lib.modules import profile as profile_mod
+
+        attention = []
+        wanted = payload.get("sources") or []
+        if wanted and not _aborting(monitor):
+            live = _jsonrpc_service("Files.GetSources", {"media": "files"}) or {}
+            have = {
+                (s.get("file") or "").strip()
+                for s in live.get("sources", [])
+                if isinstance(s, dict)
+            }
+            missing = [p for p in wanted if p not in have]
+            if missing:
+                attention.append(
+                    "source(s) not live after restart: %s" % ", ".join(missing)
+                )
+        settings = payload.get("settings") or {}
+        for sid, text in sorted(settings.items()):
+            if _aborting(monitor):
+                return
+            result = _jsonrpc_service("Settings.GetSettingValue", {"setting": sid})
+            if not isinstance(result, dict) or "value" not in result:
+                continue  # id unknown to this Kodi: the apply already reported it
+            if not profile_mod.values_match(result["value"], text):
+                attention.append(
+                    "%s is %r, profile wanted %r" % (sid, result["value"], text)
+                )
+        if attention:
+            for line in attention:
+                xbmc.log(
+                    "%s : boot profile-check ATTENTION: %s" % (AddonID, line),
+                    level=xbmc.LOGWARNING,
+                )
+            xbmcgui.Dialog().notification(
+                "EZ Maintenance++",
+                "The settings profile did not fully stick. "
+                "Run Apply Settings Profile again.",
+                time=8000,
+            )
+        else:
+            xbmc.log(
+                "%s : boot profile-check: applied profile verified live"
+                % AddonID,
+                level=xbmc.LOGINFO,
+            )
+    except Exception:
+        pass
+    finally:
+        try:
+            tools.clear_profile_check_marker()
         except Exception:
             pass
 

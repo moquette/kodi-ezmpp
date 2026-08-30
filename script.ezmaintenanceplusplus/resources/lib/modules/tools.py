@@ -538,6 +538,86 @@ def clear_pvr_pause_marker():
         pass
 
 
+# --------------------------------------------------------------------------- #
+# Settings-profile boot-check marker (2026-08-30). Applying the profile arms
+# this so the boot service can confirm, after the restart, the one thing the
+# apply flow cannot confirm in-session: the merged file manager sources, which
+# Kodi only reads at startup (Files.GetSources returns the in-memory list, so
+# an in-flow read-back of a correct write would report a false PARTIAL).
+#
+# Same location rules as the restore-check marker above, same reasons: a
+# DOT-FILE in this add-on's own addon_data, never setSetting and never
+# settings.xml (service.py documents why setSetting is unreliable for
+# boot-time state), and nsud._should_vector leaves a non-settings dot-file
+# alone on tvOS.
+#
+# The payload is JSON and is STAMPED with the box that wrote it (the MAC): a
+# full backup captures everything under this add-on's addon_data except its
+# own settings.xml, so a backup taken between apply and restart would
+# otherwise make a SECOND box run this box's pending check. Excluding the
+# marker from backups instead would contradict the "Full means full" contract
+# line; the stamp needs no contract amendment. (The same exposure exists for
+# RESTORE_CHECK_MARKER and PVR_PAUSE_MARKER; this declines to add a third,
+# per the plan, rather than fixing those here.)
+# --------------------------------------------------------------------------- #
+PROFILE_CHECK_MARKER = translatePath(
+    "special://home/userdata/addon_data/script.ezmaintenanceplusplus/.ezm_profile_check"
+)
+
+
+def mark_profile_check_pending(payload):
+    """Arm the one-shot post-restart profile check. `payload` is a dict
+    ({"box": mac, "sources": [...], "settings": {...}}). Returns True iff the
+    marker landed; the CALLER logs loudly on False, because section 6.3
+    promises the owner the sources take effect after the reopen and a silent
+    failure here means nothing ever checks that promise. Never raises."""
+    try:
+        import json
+
+        d = os.path.dirname(PROFILE_CHECK_MARKER)
+        if not os.path.isdir(d):
+            os.makedirs(d)
+        with open(PROFILE_CHECK_MARKER, "w") as f:
+            f.write(json.dumps(payload))
+        return True
+    except Exception:
+        return False
+
+
+def read_profile_check():
+    """The armed payload dict, or None (no marker, or an unreadable one -
+    which the caller treats as nothing owed, never as a finding)."""
+    try:
+        import json
+
+        with open(PROFILE_CHECK_MARKER) as f:
+            data = json.loads(f.read())
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def profile_check_pending():
+    """True iff an apply asked for a post-restart check. Never raises."""
+    try:
+        return os.path.exists(PROFILE_CHECK_MARKER)
+    except Exception:
+        return False
+
+
+def clear_profile_check_marker():
+    """Remove the marker so the check runs exactly once - and it is cleared
+    REGARDLESS of outcome, or an owner who picked "Later", changed a setting
+    by hand and rebooted next week would be nagged about a profile he
+    deliberately moved away from (the read-only cousin of defect A3).
+    Never raises."""
+    try:
+        if os.path.exists(PROFILE_CHECK_MARKER):
+            os.remove(PROFILE_CHECK_MARKER)
+    except Exception:
+        pass
+
+
 # NOTE: EZ Maintenance++ has NO IPTV behavior. The former post-restore IPTV auto-enable
 # intent flag and the unattended boot gate that turned the IPTV client back on were REMOVED
 # (they auto-enabled a client that crashed natively on a real box). A restore never touches,

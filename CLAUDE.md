@@ -233,7 +233,9 @@ not a spec):
   STRAY `instance-settings-*.xml` AFTER the extract (files the archive does not
   carry; a cancel can never destroy config the box already had) so pvr.iptvsimple
   state exactly equals the archive (the duplicate-instance brick guard). The ONLY
-  sanctioned add-on toggle anywhere is the restore-scoped PVR pause: when the
+  sanctioned add-on toggle in boot and restore is the restore-scoped PVR pause
+  (Apply Settings Profile, below, is the one OTHER actor allowed to enable
+  add-ons): when the
   archive carries IPTV config and pvr.iptvsimple is enabled, restore disables it
   for the extract window and ALWAYS re-enables it afterward (cancel path
   included; a re-enable failure is reported loudly). Without the pause, the live
@@ -241,9 +243,16 @@ not a spec):
   the next clean shutdown (hardware-proven, kodi-settings-clobber.md). Boot-time
   work is limited to SELF-HEALING an interrupted or superseded restore: resuming a
   restore-paused PVR client, the once-per-version stale-key purge, the stale
-  bytecode purge, and the read-only post-restore check. Boot NEVER installs,
-  stages, or enables an add-on the box did not already have enabled, and restore
-  never installs or stages add-ons.
+  bytecode purge, the read-only post-restore check, and the read-only
+  post-profile check. Boot NEVER installs, stages, or enables an add-on the box
+  did not already have enabled, and restore never installs or stages add-ons.
+  **Apply Settings Profile is the one deliberate exception to both lines**, as
+  a THIRD actor: user-invoked, foreground, behind an explicit confirm, applying
+  a validated bundle only (`resources/lib/modules/profile.py`, plan section 9).
+  It stages, enables and (for its three confirm-gated core settings) answers
+  Kodi's own warning dialogs; its boot-side half checks and reports ONLY. Boot
+  and restore stay exactly as restricted as written above - do not read this
+  exception as loosening either of them.
 - **Two-layer wipe.** A wipe on tvOS (One-Tap clean wipe, Fresh Start) clears BOTH
   layers - the POSIX files AND the NSUserDefaults keys - with the same exclusions.
   A POSIX-only wipe leaves stale keys that shadow the restored files; that bug
