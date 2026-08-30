@@ -243,6 +243,26 @@ then wedged the quit. Three durable fixes came out of it:
    non-MAC stamps as empty, and the reader treats a non-MAC stamp as
    UNSTAMPED, never as another box.
 
+## Open-item decisions taken with the build (plan section 11)
+
+- Item 1, `filelists.showparentdiritems`: the bundle carries `true`, the
+  current tree's value, which also equals Kodi 22's measured stock default.
+  `bootstrapper/defaults.txt` still says DISABLED; if the owner meant
+  disabled, the fix is one value in `settings.d/40-media.xml`.
+- Item 2, class B: stays dropped (E2 found no live path).
+- Item 3, class C: ships (E1, all four arms).
+- Item 4: no step swap; the three confirm-gated ids are live-set with the
+  bounded self-answer mechanism described above.
+- Item 5, wording: drafts shipped ("Apply Settings Profile", the confirm, the
+  three result lines); owner-gated vocabulary, one string each to change.
+- Item 6, already-enabled third-party addon_data: implemented as an honest
+  per-leaf `refused` with the reason; the bounded disable/re-enable stays
+  unsanctioned until the owner says otherwise. No current payload hits it.
+- Item 7, `general.addonupdates`: OUT of the bundle, by decision rather than
+  omission: the current settings tree does not carry it, and plan 4.4 already
+  accepts the bounded update window that enabling the repository last leaves
+  open.
+
 ## What changed against the plan's letter
 
 - Bootstrapper's `settings/defaults.d/` grew since 2026-08-04: three new class
