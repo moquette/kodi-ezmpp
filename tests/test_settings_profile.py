@@ -389,6 +389,13 @@ def test_plan_order_matches_7_4(monkeypatch):
     sets = [op["id"] for op in ops if op["kind"] == "set"]
     assert sets.index("services.esenabled") < sets.index("services.esallinterfaces")
     assert sets.index("addons.unknownsources") < sets.index("addons.updatemode")
+    assert sets.index("services.webserverpassword") < sets.index(
+        "services.webserver"
+    ), (
+        "the password must land before the web server enables: with auth on "
+        "and no password Kodi vetoes the enable with its invalid-config OK "
+        "dialog (string 36635) - measured on the first full bench run"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -413,8 +420,9 @@ class FakeKodi:
         self.addons_home = Path(addons_home)
         self.addons = {}
         self.gated = {}  # sid -> localized-string id
+        self.ok_veto = {}  # sid -> OK-dialog text (invalid-config style veto)
         self.answer_dialogs = True
-        self.dialog = None  # {"sid","text","event","answered"}
+        self.dialog = None  # {"sid","text","event","answered","type"}
         self.focus = "10"
         self.events = []
         self.builtins = []
@@ -432,6 +440,22 @@ class FakeKodi:
             sid, value = p["setting"], p["value"]
             if sid not in self.settings:
                 return json.dumps({"error": {"code": -32602}})
+            if sid in self.ok_veto:
+                # The invalid-config veto shape (NetworkServices string
+                # 36635): an OK dialog explains, the set returns false, and
+                # the value never commits - regardless of how the dialog is
+                # dismissed.
+                ev = threading.Event()
+                self.dialog = {
+                    "sid": sid,
+                    "text": self.ok_veto[sid],
+                    "event": ev,
+                    "answered_yes": False,
+                    "type": "ok",
+                }
+                ev.wait(10)
+                self.dialog = None
+                return json.dumps({"result": False})
             if sid in self.gated:
                 ev = threading.Event()
                 self.dialog = {
@@ -439,6 +463,7 @@ class FakeKodi:
                     "text": _CONFIRM_TEXTS[self.gated[sid]],
                     "event": ev,
                     "answered_yes": False,
+                    "type": "yesno",
                 }
                 self.focus = "10"
                 ev.wait(10)
@@ -480,13 +505,18 @@ class FakeKodi:
                 self.dialog["answered_yes"] = True
                 self.dialog["event"].set()
         elif cmd == "Dialog.Close(yesnodialog,true)":
-            if self.dialog:
+            if self.dialog and self.dialog.get("type") == "yesno":
                 self.dialog["answered_yes"] = False
+                self.dialog["event"].set()
+        elif cmd == "Dialog.Close(okdialog,true)":
+            if self.dialog and self.dialog.get("type") == "ok":
                 self.dialog["event"].set()
 
     def getCondVisibility(self, cond):
         if cond == "Window.IsActive(yesnodialog)":
-            return self.dialog is not None
+            return self.dialog is not None and self.dialog.get("type") == "yesno"
+        if cond == "Window.IsActive(okdialog)":
+            return self.dialog is not None and self.dialog.get("type") == "ok"
         if cond == "System.Platform.TVOS":
             return self.store.platform == "tvos"
         if cond == "System.Platform.Android":
@@ -791,6 +821,46 @@ def test_addon_data_for_an_enabled_addon_is_refused_not_clobbered(
     assert rig.store.state("addon_data/some.addon/settings.xml") in (
         "key-only", "both"
     )
+
+
+def test_ok_dialog_veto_is_a_bounded_refusal_with_kodis_words(
+    monkeypatch, tmp_path
+):
+    """The failure the first full bench run actually hit (2026-08-30): a set
+    vetoed by an OK dialog from OnSettingChanging (webserver enabled while
+    auth was on with no password, string 36635). The engine must capture
+    Kodi's explanation as the refusal detail, close the dialog so nothing
+    downstream trips on it, and never time out."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    veto_text = "If web server authentication is enabled, a password must be entered as well."
+    rig.kodi.ok_veto["services.webserver"] = veto_text
+    op = {"kind": "set", "id": "services.webserver", "value": "true",
+          "confirm": True}
+    record = rig.profile.apply([op])
+    (item,) = record["items"]
+    assert item["outcome"] == "refused", item
+    assert veto_text in item["detail"], (
+        "Kodi's own explanation must be the refusal detail"
+    )
+    assert rig.kodi.dialog is None, "the OK dialog was left on screen"
+    assert rig.settings["services.webserver"] is False
+
+
+def test_unexpected_confirm_on_a_plain_set_is_bounded_and_closed(
+    monkeypatch, tmp_path
+):
+    """A NON-gated id that unexpectedly posts a yes/no must not wedge the flow:
+    the bound applies to EVERY set (plan 7.5's condition for shipping class A
+    as a loop), the foreign dialog is closed unanswered, and the outcome is an
+    honest refusal."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    rig.kodi.gated["epg.selectaction"] = 36633  # a surprise confirm
+    op = {"kind": "set", "id": "epg.selectaction", "value": "1", "confirm": False}
+    record = rig.profile.apply([op])
+    (item,) = record["items"]
+    assert item["outcome"] == "refused", item
+    assert rig.kodi.dialog is None, "the surprise dialog was left on screen"
+    assert rig.settings["epg.selectaction"] == 2, "a closed confirm must not commit"
 
 
 # --------------------------------------------------------------------------- #

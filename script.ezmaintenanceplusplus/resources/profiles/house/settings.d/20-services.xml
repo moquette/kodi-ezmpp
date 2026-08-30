@@ -3,16 +3,27 @@
          http://<box>:8080/jsonrpc as kodi/kodi. The whole fleet's tooling
          verifies boxes through this endpoint.
 
-         services.webserver is CONFIRM-GATED on Kodi 22: enabling it fires a
-         yes/no warning from CNetworkServices::OnSettingChanging (string 36632)
-         and the change is vetoed unless the answer is YES. The apply engine
-         knows this id is gated and answers the confirm itself; see
-         profile.CONFIRM_GATED and docs/settings-profile-experiments-2026-08-30.md. -->
-    <setting id="services.webserver">true</setting>
+         ORDER IS LOAD-BEARING: services.webserver comes LAST in this block.
+         CNetworkServices::OnSettingChanging vetoes enabling the web server
+         while authentication is on and the password is EMPTY - Kodi posts an
+         OK dialog (string 36635, "a password must be entered as well") and
+         the set returns false. A fresh box has auth on and no password, so
+         enabling the server before setting the password fails outright.
+         MEASURED on the first full bench run, 2026-08-30: the original
+         webserver-first order cost that id a 20 s timeout and cascaded into
+         two more refusals. Same rule as esenabled before esallinterfaces:
+         parent and preconditions before the dependent.
+
+         services.webserver is also CONFIRM-GATED on Kodi 22: enabling it
+         fires a yes/no warning (string 36632) and the change is vetoed unless
+         the answer is YES. The apply engine knows this id is gated and
+         answers the confirm itself; see profile.CONFIRM_GATED and
+         docs/settings-profile-experiments-2026-08-30.md. -->
     <setting id="services.webserverport">8080</setting>
     <setting id="services.webserverauthentication">true</setting>
     <setting id="services.webserverusername">kodi</setting>
     <setting id="services.webserverpassword">kodi</setting>
+    <setting id="services.webserver">true</setting>
 
     <!-- "Allow remote control from applications on other systems".
          esallinterfaces is a no-op unless esenabled is also true. esenabled is

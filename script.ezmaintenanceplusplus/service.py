@@ -395,7 +395,11 @@ def _maybe_profile_check(monitor):
         mac = (xbmc.getInfoLabel("Network.MacAddress") or "").strip().lower()
     except Exception:
         pass
-    if stamp and mac and ":" in mac and stamp != mac:
+    # Only a MAC-shaped stamp can prove foreignness: Network.MacAddress
+    # returns the literal "Busy" while warming up, and a non-MAC stamp must
+    # read as "unstamped", never as "another box" (first full bench run,
+    # 2026-08-30).
+    if stamp and ":" in stamp and mac and ":" in mac and stamp != mac:
         try:
             tools.clear_profile_check_marker()
         except Exception:

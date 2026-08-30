@@ -316,6 +316,22 @@ def test_foreign_box_stamp_clears_without_running(env):
     assert any("another box" in m for m in env.log_lines(LOGINFO))
 
 
+def test_busy_stamp_is_unstamped_not_foreign(env):
+    """Network.MacAddress returns the literal "Busy" while the info system
+    warms up, and the first full bench run wrote exactly that into the stamp.
+    A non-MAC stamp must read as UNSTAMPED (run the check), never as another
+    box (clear it unrun)."""
+    env.arm(dict(_PAYLOAD, box="Busy"))
+    env.live_sources = list(_PAYLOAD["sources"])
+    env.live_settings = {"services.webserver": True, "epg.selectaction": 1}
+    svc = env.load()
+    svc._maybe_profile_check(_Mon())
+    assert env.rpc_calls, "the check must RUN for a non-MAC stamp"
+    assert env.notifications == []
+    assert any("verified live" in m for m in env.log_lines(LOGINFO))
+    assert not env.marker.exists()
+
+
 def test_aborted_boot_does_not_burn_the_marker(env):
     """The GUI wait sits OUTSIDE the try/finally: an aborted boot must NOT
     consume the one-shot marker - the check never ran, so it is still owed

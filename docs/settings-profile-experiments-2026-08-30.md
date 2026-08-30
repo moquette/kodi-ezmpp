@@ -187,6 +187,62 @@ file half exists.
   an invisible setting; none of the current payload ids tripped it in fragment
   order.
 
+## Phase 2 gate: the projection differential, run and CLEAN
+
+Same day, after the engine landed. A THIRD fresh isolated-HOME first-run
+profile (the second was deliberately burned; see the finding below), the built
+zip plus its script.module dependencies staged from the official hub
+artifacts, EZ Maintenance++ enabled over JSON-RPC, and the REAL flow driven
+end to end: one confirm answered, the add-on answered Kodi's web server
+warning ITSELF (observed on screen mid-flow, untouched by the driver), one
+result message - "Settings profile applied. The media sources appear after
+Kodi reopens." - in about 7 seconds, restart accepted, clean "Saving
+settings" flush.
+
+After the restart, measured over JSON-RPC:
+
+- All 16 class A ids live with the bundle's exact values.
+- All 3 sources present BY PATH in `Files.GetSources`, and the `.T7B` source
+  BROWSES (`Files.GetDirectory` returned its entries). The profile's
+  pre-existing `<video>` section survived the merge.
+- Both add-ons enabled; the repository enable was the final apply op.
+- The own-settings leaf carried the bench overlay's values with no
+  `default="true"` marker.
+- The boot check ran on the restart, verified sources and settings LIVE,
+  logged `boot profile-check: applied profile verified live`, spoke nothing,
+  and consumed the marker.
+- Bundle values byte-compare IDENTICAL to `bootstrapper/settings/defaults.d`
+  (minus class B), the one-off replacement for the retired launcher-adapter
+  gate.
+- Zero ERROR lines in `kodi.log`, captured against a zero-error baseline.
+
+The idempotent RE-RUN, same box, 2.5 seconds: every item `already-correct`,
+the "This box already matches the settings profile" acknowledgement, NO
+restart offer, no storage writes.
+
+### What the first full run caught, and what it changed
+
+The first end-to-end run reported an honest PARTIAL (37 of 43): the original
+fragment order enabled `services.webserver` BEFORE its password existed, and
+`CNetworkServices::OnSettingChanging` vetoed it with an OK dialog (string
+36635, "a password must be entered as well") that nothing watched - a 20 s
+timeout, two cascade refusals, and an unanswerable modal left on screen that
+then wedged the quit. Three durable fixes came out of it:
+
+1. The bundle's services fragment now sets port, authentication, username and
+   password BEFORE `services.webserver` - the parent-before-dependent rule's
+   second measured instance.
+2. EVERY class A set now runs bounded through the worker-and-watch path, not
+   just the three confirm-gated ids: an unexpected OK dialog is captured as
+   the refusal reason and closed; a foreign yes/no is closed unanswered; a
+   set that never returns is `timeout`. "Either every set carries a bound, or
+   class A does not ship as a loop" was the plan's own condition, now met
+   literally.
+3. `Network.MacAddress` returned the literal "Busy" into the marker stamp
+   (Kodi's not-ready InfoLabel value); the writer now retries and records
+   non-MAC stamps as empty, and the reader treats a non-MAC stamp as
+   UNSTAMPED, never as another box.
+
 ## What changed against the plan's letter
 
 - Bootstrapper's `settings/defaults.d/` grew since 2026-08-04: three new class

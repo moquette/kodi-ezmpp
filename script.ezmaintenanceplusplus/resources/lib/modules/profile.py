@@ -553,7 +553,14 @@ def apply(ops, on_step=None, log=None):
     {"items": [...], "warnings": [...]}; a failure never aborts the flow and
     never leaves a step silently half-applied - it is recorded and surfaces in
     the result (plan 7.4)."""
-    log = log or (lambda msg: xbmc.log("ezmaintenanceplus: profile: %s" % msg))
+    # LOGINFO, not the default LOGDEBUG: the per-item outcomes are the result
+    # record's audit trail and must be readable from a normal kodi.log (the
+    # first bench run logged them at DEBUG and they never reached the file).
+    log = log or (
+        lambda msg: xbmc.log(
+            "ezmaintenanceplus: profile: %s" % msg, level=xbmc.LOGINFO
+        )
+    )
     ctx = {"items": [], "warnings": [], "log": log}
     n = len(ops)
     handlers = {
@@ -759,24 +766,33 @@ def _apply_set(op, ctx):
         return ERROR, "cannot coerce %r: %s" % (text, e)
     if cur == want:
         return ALREADY, ""
-    if op.get("confirm"):
-        return _set_confirm_gated(sid, want, ctx["log"])
-    resp = _rpc("Settings.SetSettingValue", {"setting": sid, "value": want})
-    if resp.get("result") is not True:
-        return REFUSED, "SetSettingValue returned %r" % (resp.get("error") or resp.get("result"),)
-    ok, now = _get_value(sid)
-    if ok and now == want:
-        return APPLIED, ""
-    return REFUSED, "read-back holds %r" % (now,)
+    return _bounded_set(sid, want, ctx["log"])
 
 
-def _set_confirm_gated(sid, want, log):
-    """Fire the set from a worker thread; watch for KODI'S OWN confirm and
-    answer Yes; verify by read-back. The dialog text must equal the localized
-    string for this exact id or nothing is touched - we answer our own
-    question, never someone else's. See the module docstring and
-    docs/settings-profile-experiments-2026-08-30.md for why in-process is the
-    one transport where this works."""
+def _bounded_set(sid, want, log):
+    """Every class A set runs bounded, through a worker thread, with the main
+    thread watching for a modal - because ANY in-process set can block forever
+    behind one, and the first full bench run proved it (2026-08-30): the
+    original order enabled the web server before its password existed, Kodi
+    posted its invalid-config OK dialog (string 36635) from OnSettingChanging,
+    and the flow ate a 20 s timeout plus two cascade refusals while the dialog
+    sat unanswered on screen. "Either every set carries a bound, or class A
+    does not ship as a loop" was the plan's own condition (7.5); this is the
+    bound.
+
+    Three modal cases, all measured:
+    - KODI'S OWN CONFIRM for a CONFIRM_GATED id, verified by localized text:
+      answered YES (the user consented at the flow's one confirm; the dialog
+      asks about the very thing he asked for). Measured answer path: walk
+      focus to the Yes button (11), then select; there is no countdown, so a
+      missed step retries on the next poll and a miss cannot corrupt anything.
+    - AN OK DIALOG (a veto explanation, e.g. invalid web server config): its
+      text is captured as the refusal reason and it is closed, letting the
+      set return false. Outcome: refused, with Kodi's own words as detail.
+    - ANY OTHER YES/NO during our in-flight set: closed unanswered (Kodi
+      treats a closed confirm as decline; pre-commit ids keep their old value
+      and unknownsources reverts itself). Outcome from the read-back.
+    """
     box = {}
 
     def worker():
@@ -788,41 +804,48 @@ def _set_confirm_gated(sid, want, log):
             box["err"] = "%s: %s" % (type(e).__name__, e)
 
     expected = ""
-    try:
-        expected = (xbmc.getLocalizedString(CONFIRM_GATED[sid]) or "").strip()
-    except Exception:
-        pass
+    if sid in CONFIRM_GATED:
+        try:
+            expected = (xbmc.getLocalizedString(CONFIRM_GATED[sid]) or "").strip()
+        except Exception:
+            pass
     t = threading.Thread(target=worker)
     t.daemon = True
     t.start()
+    t.join(0.05)  # the overwhelmingly common case: no dialog, instant return
+    refusal_text = ""
     deadline = time.time() + _CONFIRM_TIMEOUT_S
     while t.is_alive() and time.time() < deadline:
         try:
-            if expected and xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
+            if xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
                 shown = (xbmc.getInfoLabel("Control.GetLabel(9)") or "").strip()
-                if shown == expected:
-                    # Measured working answer path: walk focus to Yes (11),
-                    # then select. No countdown exists on these dialogs, so a
-                    # missed step just retries on the next poll.
+                if expected and shown == expected:
                     if xbmc.getInfoLabel("System.CurrentControlId") == "11":
                         xbmc.executebuiltin("Action(select)")
                     else:
                         xbmc.executebuiltin("Action(right)")
+                else:
+                    refusal_text = refusal_text or shown
+                    xbmc.executebuiltin("Dialog.Close(yesnodialog,true)")
+            elif xbmc.getCondVisibility("Window.IsActive(okdialog)"):
+                refusal_text = (
+                    refusal_text
+                    or (xbmc.getInfoLabel("Control.GetLabel(9)") or "").strip()
+                )
+                xbmc.executebuiltin("Dialog.Close(okdialog,true)")
         except Exception:
             pass
         xbmc.sleep(300)
     if t.is_alive():
-        # Leave nothing modal behind: closing the confirm resolves it as
-        # non-Yes, which Kodi treats as decline (pre-commit ids stay at their
-        # old value; unknownsources reverts itself). The read-back below then
-        # reports what actually stands.
-        try:
-            xbmc.executebuiltin("Dialog.Close(yesnodialog,true)")
-        except Exception:
-            pass
+        # Leave nothing modal behind for the rest of the flow to trip on.
+        for close in ("Dialog.Close(yesnodialog,true)", "Dialog.Close(okdialog,true)"):
+            try:
+                xbmc.executebuiltin(close)
+            except Exception:
+                pass
         t.join(2.0)
         if t.is_alive():
-            log("confirm-gated set of %s never returned" % sid)
+            log("bounded set of %s never returned" % sid)
             return TIMEOUT, "set blocked past %ds" % int(_CONFIRM_TIMEOUT_S)
     ok, now = _get_value(sid)
     if ok and now == want:
@@ -830,7 +853,14 @@ def _set_confirm_gated(sid, want, log):
     err = box.get("err")
     if err:
         return ERROR, err
-    return REFUSED, "Kodi's confirm did not accept; live value is %r" % (now,)
+    if refusal_text:
+        return REFUSED, "Kodi refused: %s" % refusal_text
+    resp = box.get("resp") or {}
+    if resp.get("result") is not True:
+        return REFUSED, "SetSettingValue returned %r" % (
+            resp.get("error") or resp.get("result"),
+        )
+    return REFUSED, "read-back holds %r" % (now,)
 
 
 def _is_tvos():

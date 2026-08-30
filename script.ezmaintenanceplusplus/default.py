@@ -216,12 +216,33 @@ def APPLY_SETTINGS_PROFILE():
             % (AddonID, it["kind"], it["label"], it["outcome"], it["detail"]),
             level=xbmc.LOGWARNING,
         )
+    applied_any = any(it["outcome"] == "applied" for it in record["items"])
+    if not failures and not applied_any:
+        # The idempotent re-run: nothing changed, so nothing needs a restart,
+        # no boot check is owed, and saying "applied" would claim work that
+        # never happened. Verified distinguishable per item in the log.
+        ui.done(
+            "This box already matches the settings profile. Nothing was "
+            "changed."
+        )
+        return
     # Arm the one-shot boot check that confirms after the restart what cannot
     # be confirmed now (the sources). A failed marker write is LOUD: 6.3
     # promises sources take effect after the reopen, and if this write fails
     # silently nothing ever checks that promise (plan 7.7).
+    # Network.MacAddress returns the literal "Busy" while the info system is
+    # still warming up (it did exactly that on the first full bench run,
+    # 2026-08-30, and the boot check would have read "Busy" as a FOREIGN box
+    # and cleared the marker unrun). Retry briefly; a stamp that never becomes
+    # MAC-shaped is recorded as empty, which the reader treats as unstamped.
+    mac = ""
+    for _ in range(5):
+        mac = (xbmc.getInfoLabel("Network.MacAddress") or "").strip()
+        if ":" in mac:
+            break
+        xbmc.sleep(200)
     payload = {
-        "box": xbmc.getInfoLabel("Network.MacAddress") or "",
+        "box": mac if ":" in mac else "",
         "created": time.time(),
         "sources": [path for _name, path in bundle["sources"]],
         "settings": dict(bundle["class_a"]),
