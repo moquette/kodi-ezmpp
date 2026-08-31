@@ -96,8 +96,7 @@ jobs:
       #
       # This ran a SINGLE build until 2026-07-25, while its comment claimed
       # byte-stability. One build cannot show that; --check builds twice and
-      # compares, which is what the comment always described. estuary7 has had
-      # the equivalent as its own anchored-build-check job.
+      # compares, which is what the comment always described.
       #
       # Keep --check OUT of the publish job: it builds into temp dirs and leaves
       # nothing in dist/, so the release step there fails with "shasum:
@@ -141,8 +140,7 @@ jobs:
       # A PLAIN build, deliberately. `--check` builds twice into temp dirs and
       # byte-compares, and leaves NOTHING in dist/, so using it here breaks the
       # next step with "shasum: dist/...zip: No such file or directory" (proven,
-      # run 2026-07-25). The determinism gate lives in the `test` job instead,
-      # which is also where estuary7 keeps its equivalent.
+      # run 2026-07-25). The determinism gate lives in the `test` job instead.
       - name: Build the deterministic release zip
         run: python3 tools/build.py
 
