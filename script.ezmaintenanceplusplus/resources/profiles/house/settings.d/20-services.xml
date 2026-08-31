@@ -28,7 +28,10 @@
     <!-- "Allow remote control from applications on other systems".
          esallinterfaces is a no-op unless esenabled is also true. esenabled is
          already true by stock default, but pin it so a future Kodi flipping
-         the default cannot silently break remote control. ORDER MATTERS:
+         the default cannot silently break remote control. THIS true IS FOR
+         fireos AND THE BENCH ONLY: overlays/tvos/settings.d/20-services.xml
+         overrides it to false, the 2026-08-28 watchdog-kill workaround the
+         owner approved as the recorded tvOS state. ORDER MATTERS:
          esenabled must be applied before esallinterfaces (parent before
          dependent), which is why it appears first here and why the loader
          keeps position-from-first when an overlay overrides a value.

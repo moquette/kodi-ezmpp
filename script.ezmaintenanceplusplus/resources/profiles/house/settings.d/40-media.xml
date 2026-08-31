@@ -6,9 +6,9 @@
 
     <!-- Show ".." parent-folder entries in file lists. Kodi 22's stock value
          is true (MEASURED on a first-run Piers profile, 2026-08-30); pinned so
-         a future default cannot move it. NOTE: bootstrapper/defaults.txt says
-         "DISABLED" and plan open item 1 recommended false; the value here is
-         the current settings tree's, and flipping it is a one-line owner call. -->
+         a future default cannot move it. Owner call SETTLED 2026-08-30: it
+         stays true; bootstrapper/defaults.txt's "DISABLED" and plan open
+         item 1's recommendation of false are superseded. -->
     <setting id="filelists.showparentdiritems">true</setting>
 
     <!-- Wait this long into playback before stamping a channel's last-watched

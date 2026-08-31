@@ -184,13 +184,17 @@ def APPLY_SETTINGS_PROFILE():
         )
         return
     ops = profile.plan(bundle)
+    # The Estuary yesno textbox is 855x165 px: FOUR lines of font13, roughly
+    # 60 characters each, and anything past line 4 is simply not on screen
+    # when the user answers (MEASURED on the bedroom Fire TV at 1080p,
+    # 2026-08-30: the backup-folder and "Nothing is removed" lines of the
+    # longer original never displayed). Four explicit lines, each kept short
+    # enough that none of them wraps into a fifth.
     if not ui.confirm(
         "Apply the %s settings profile?\n"
-        "This sets up the box the standard way: web control and remote "
-        "control on, add-ons allowed from any repository, guide and language "
-        "defaults, the Tony.7.Bones repository, the KodiShare and KodiBackup "
-        "sources, and this add-on's backup folder.\n"
-        "Nothing is removed. Kodi asks to restart when it finishes."
+        "Web and remote control on, add-ons from any source,\n"
+        "the repository, sources and standard defaults.\n"
+        "Nothing is removed. Kodi asks to restart when done."
         % bundle["name"],
         yeslabel="Apply",
         nolabel="Cancel",

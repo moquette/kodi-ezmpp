@@ -174,8 +174,9 @@ def test_house_bundle_passes_the_authoring_catalog_gate(monkeypatch):
     box. At runtime the same check is deliberately absent: a moved live
     catalog produces a per-item unknown-id outcome, never an aborted apply."""
     profile = _import_profile(monkeypatch)
-    bundle = profile.load(str(HOUSE), "fireos", known_ids=_catalog())
-    assert len(bundle["class_a"]) == 16
+    for cls in ("fireos", "tvos", "bench"):
+        bundle = profile.load(str(HOUSE), cls, known_ids=_catalog())
+        assert len(bundle["class_a"]) == 16, cls
 
 
 def test_house_overlays_differ_per_class_and_bench_is_deliberate(monkeypatch):
@@ -191,6 +192,26 @@ def test_house_overlays_differ_per_class_and_bench_is_deliberate(monkeypatch):
     assert leaves["fireos"].endswith("/fireos/")
     assert leaves["tvos"].endswith("/tvos/")
     assert leaves["bench"] == leaves["fireos"]
+
+
+def test_house_esenabled_split_tvos_false_others_true(monkeypatch):
+    """The event server split, pinned: tvOS carries services.esenabled FALSE
+    (the 2026-08-28 watchdog-kill workaround, owner-approved as the recorded
+    tvOS state - a profile run must never undo it), while fireos and the bench
+    keep TRUE. On every class the id keeps its base POSITION, before
+    services.esallinterfaces (parent before dependent), which is the exact
+    trap the position-from-first merge rule exists for."""
+    profile = _import_profile(monkeypatch)
+    for cls, want in (("fireos", "true"), ("bench", "true"), ("tvos", "false")):
+        bundle = profile.load(str(HOUSE), cls)
+        values = dict(bundle["class_a"])
+        assert values["services.esenabled"] == want, (
+            "%s must ship services.esenabled=%s" % (cls, want)
+        )
+        order = [sid for sid, _ in bundle["class_a"]]
+        assert order.index("services.esenabled") < order.index(
+            "services.esallinterfaces"
+        ), "%s: the overlay override moved esenabled after its dependent" % cls
 
 
 def test_unresolved_device_class_is_a_hard_failure(monkeypatch):

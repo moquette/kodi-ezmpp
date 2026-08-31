@@ -1,0 +1,11 @@
+<settings version="2">
+    <!-- tvOS ONLY: the event server stays OFF on the Apple TVs. Turning it
+         off is the 2026-08-28 watchdog-kill workaround, owner-approved as the
+         recorded state for this device class, and a profile run must never
+         undo it (measured on atv1, 2026-08-30: the bundle's global true would
+         have). The base fragment keeps true for fireos and the bench. The
+         loader takes the VALUE from this overlay but the POSITION from the
+         base fragment, so esenabled still lands before esallinterfaces
+         (parent before dependent). -->
+    <setting id="services.esenabled">false</setting>
+</settings>
