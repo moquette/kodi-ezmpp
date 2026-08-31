@@ -1,0 +1,4 @@
+<settings version="2">
+    <setting id="download.path">nfs://192.168.7.2/Users/moquette/Kodi/Backup/androidtv/</setting>
+    <setting id="restore.path">nfs://192.168.7.2/Users/moquette/Kodi/Backup/androidtv/</setting>
+</settings>

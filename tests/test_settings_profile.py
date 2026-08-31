@@ -124,7 +124,7 @@ def make_bundle(
     addon_data=None,
     nodes_xml=None,
     rssfeeds_xml=None,
-    classes=("fireos", "tvos", "bench"),
+    classes=("fireos", "tvos", "androidtv", "bench"),
 ):
     b = tmp_path / "bundle"
     _write(
@@ -161,7 +161,7 @@ def make_bundle(
 # --------------------------------------------------------------------------- #
 def test_house_bundle_loads_for_every_device_class(monkeypatch):
     profile = _import_profile(monkeypatch)
-    for cls in ("fireos", "tvos", "bench"):
+    for cls in ("fireos", "tvos", "androidtv", "bench"):
         bundle = profile.load(str(HOUSE), cls)
         assert bundle["device_class"] == cls
         assert len(bundle["class_a"]) == 18, (
@@ -190,35 +190,179 @@ def test_house_bundle_passes_the_authoring_catalog_gate(monkeypatch):
     box. At runtime the same check is deliberately absent: a moved live
     catalog produces a per-item unknown-id outcome, never an aborted apply."""
     profile = _import_profile(monkeypatch)
-    for cls in ("fireos", "tvos", "bench"):
+    for cls in ("fireos", "tvos", "androidtv", "bench"):
         bundle = profile.load(str(HOUSE), cls, known_ids=_catalog())
         assert len(bundle["class_a"]) == 18, cls
 
 
 def test_house_overlays_differ_per_class_and_bench_is_deliberate(monkeypatch):
     """The backup folder leaf is overlay-only: tvos gets tvos/, fireos gets
-    fireos/, and the bench REPRODUCES the fireos leaf on purpose (the bench has
-    always been seeded with it; plan 7.1)."""
+    fireos/, androidtv gets androidtv/ (the 2026-08-31 split - before it the
+    Shield landed in the Fire TV folder), and the bench REPRODUCES the fireos
+    leaf on purpose (the bench has always been seeded with it; plan 7.1)."""
     profile = _import_profile(monkeypatch)
     leaves = {}
-    for cls in ("fireos", "tvos", "bench"):
+    for cls in ("fireos", "tvos", "androidtv", "bench"):
         bundle = profile.load(str(HOUSE), cls)
         own = bundle["addon_data"]["script.ezmaintenanceplusplus"]["settings.xml"]
         leaves[cls] = dict(own["pairs"])["download.path"]
     assert leaves["fireos"].endswith("/fireos/")
     assert leaves["tvos"].endswith("/tvos/")
+    assert leaves["androidtv"].endswith("/androidtv/")
     assert leaves["bench"] == leaves["fireos"]
+
+
+def _rig_detector(monkeypatch, profile, tvos, android, out=None, raises=None):
+    """Point detect_device_class at a scripted platform: the two condvis flags
+    and what getprop returns (or raises). Returns the list of spawned argvs so
+    a test can assert getprop is only ever consulted on Android."""
+    flags = {"System.Platform.TVOS": tvos, "System.Platform.Android": android}
+    monkeypatch.setattr(profile.xbmc, "getCondVisibility", lambda f: flags[f])
+    calls = []
+
+    def check_output(argv, timeout=None):
+        calls.append(list(argv))
+        if raises is not None:
+            raise raises
+        return out
+
+    monkeypatch.setattr(profile.subprocess, "check_output", check_output)
+    return calls
+
+
+def test_detect_device_class_is_a_four_way_split(monkeypatch):
+    """The classification (owner-approved 2026-08-31): TVOS -> tvos; Android
+    with an Amazon manufacturer -> fireos; Android without -> androidtv;
+    neither flag -> bench. Kodi has no Amazon flag, so the Android split reads
+    ``ro.product.manufacturer`` via getprop - the byte strings here are the
+    ones MEASURED from inside Kodi's own Python on 2026-08-31 (RunScript in a
+    running Kodi): the bedroom Fire TV (AFTHA001) returned b"Amazon\n", the
+    Shield returned b"NVIDIA\n"."""
+    profile = _import_profile(monkeypatch)
+
+    calls = _rig_detector(monkeypatch, profile, tvos=True, android=True)
+    assert profile.detect_device_class() == "tvos"
+    assert calls == [], "tvOS must classify on the flag alone, no getprop"
+
+    calls = _rig_detector(
+        monkeypatch, profile, tvos=False, android=True, out=b"Amazon\n"
+    )
+    assert profile.detect_device_class() == "fireos"
+    assert calls == [["/system/bin/getprop", "ro.product.manufacturer"]]
+
+    calls = _rig_detector(
+        monkeypatch, profile, tvos=False, android=True, out=b"NVIDIA\n"
+    )
+    assert profile.detect_device_class() == "androidtv"
+
+    calls = _rig_detector(monkeypatch, profile, tvos=False, android=False)
+    assert profile.detect_device_class() == "bench"
+    assert calls == [], "a non-Android box must never spawn getprop"
+
+
+def test_android_manufacturer_probe_failure_falls_back_to_fireos(monkeypatch):
+    """The safe default, by design: fireos is what EVERY Android box was
+    classified as before the 2026-08-31 split, so any probe failure - missing
+    binary, hung getprop, empty value - keeps a box where it already was.
+    A failure may leave the Shield in the old (wrong) folder; it must never
+    strand a Fire box in a NEW wrong one."""
+    profile = _import_profile(monkeypatch)
+
+    for reason, kwargs in (
+        ("getprop missing", {"raises": OSError("no such file")}),
+        (
+            "getprop hung",
+            {
+                "raises": __import__("subprocess").TimeoutExpired(
+                    ["/system/bin/getprop"], 10
+                )
+            },
+        ),
+        ("empty value", {"out": b""}),
+        ("whitespace value", {"out": b"  \n"}),
+    ):
+        _rig_detector(monkeypatch, profile, tvos=False, android=True, **kwargs)
+        assert profile.detect_device_class() == "fireos", reason
+
+    # And the pre-existing outermost net: a condvis blow-up still lands on
+    # bench, exactly as before the split.
+    def boom(flag):
+        raise RuntimeError("no xbmc")
+
+    monkeypatch.setattr(profile.xbmc, "getCondVisibility", boom)
+    assert profile.detect_device_class() == "bench"
+
+
+def test_amazon_match_is_case_insensitive_and_exact(monkeypatch):
+    """"Amazon" however cased is Amazon; any OTHER manufacturer, however
+    exotic, is androidtv - the equality is exact, so a hypothetical
+    "Amazonia" vendor is not swallowed into fireos."""
+    profile = _import_profile(monkeypatch)
+    for out, want in (
+        (b"amazon\n", "fireos"),
+        (b"AMAZON\n", "fireos"),
+        (b"Amazonia\n", "androidtv"),
+        (b"NVIDIA\n", "androidtv"),
+    ):
+        _rig_detector(monkeypatch, profile, tvos=False, android=True, out=out)
+        assert profile.detect_device_class() == want, out
+
+
+def test_house_androidtv_overlay_points_both_paths_at_the_androidtv_folder(
+    monkeypatch,
+):
+    """The whole point of the split: the Shield's backup and restore defaults
+    land in Backup/androidtv/ on the mini share, not the Fire TV folder."""
+    profile = _import_profile(monkeypatch)
+    bundle = profile.load(str(HOUSE), "androidtv")
+    own = bundle["addon_data"]["script.ezmaintenanceplusplus"]["settings.xml"]
+    pairs = dict(own["pairs"])
+    assert (
+        pairs["download.path"]
+        == "nfs://192.168.7.2/Users/moquette/Kodi/Backup/androidtv/"
+    )
+    assert pairs["restore.path"] == pairs["download.path"]
+    # No event-server override rides along: the esenabled false workaround is
+    # tvOS-specific (the 2026-08-28 watchdog kill), never Android's.
+    assert dict(bundle["class_a"])["services.esenabled"] == "true"
+
+
+def test_androidtv_addition_left_the_existing_overlay_files_byte_unchanged():
+    """The 2026-08-31 androidtv split ADDED a tree; the three existing classes
+    ship the exact bytes they shipped before it. Pinned by content hash, so a
+    tidy-in-passing rewrite fails here even when the values survive. A later
+    DELIBERATE overlay change updates these pins in the same commit."""
+    import hashlib
+
+    pins = {
+        "overlays/fireos/addon_data/script.ezmaintenanceplusplus/settings.xml":
+            "1149adf5a98b842de941ae2ad7f1beb1430fd5bf6d280055f6afe5a5be310421",
+        "overlays/bench/addon_data/script.ezmaintenanceplusplus/settings.xml":
+            "1149adf5a98b842de941ae2ad7f1beb1430fd5bf6d280055f6afe5a5be310421",
+        "overlays/tvos/addon_data/script.ezmaintenanceplusplus/settings.xml":
+            "e949c7d8418e8374adb2ef498c939fb4ebcbdc3f2ec24e896aee095cbeedfad7",
+        "overlays/tvos/settings.d/20-services.xml":
+            "772a8934cb378847da57eaaa3afeb8b5c5da880f101507f6e5ec64f96bf2fdbb",
+    }
+    for rel, want in pins.items():
+        got = hashlib.sha256((HOUSE / rel).read_bytes()).hexdigest()
+        assert got == want, "%s changed bytes" % rel
 
 
 def test_house_esenabled_split_tvos_false_others_true(monkeypatch):
     """The event server split, pinned: tvOS carries services.esenabled FALSE
     (the 2026-08-28 watchdog-kill workaround, owner-approved as the recorded
-    tvOS state - a profile run must never undo it), while fireos and the bench
-    keep TRUE. On every class the id keeps its base POSITION, before
+    tvOS state - a profile run must never undo it), while fireos, androidtv
+    and the bench keep TRUE (the workaround is tvOS-specific by design). On every class the id keeps its base POSITION, before
     services.esallinterfaces (parent before dependent), which is the exact
     trap the position-from-first merge rule exists for."""
     profile = _import_profile(monkeypatch)
-    for cls, want in (("fireos", "true"), ("bench", "true"), ("tvos", "false")):
+    for cls, want in (
+        ("fireos", "true"),
+        ("androidtv", "true"),
+        ("bench", "true"),
+        ("tvos", "false"),
+    ):
         bundle = profile.load(str(HOUSE), cls)
         values = dict(bundle["class_a"])
         assert values["services.esenabled"] == want, (
@@ -240,7 +384,7 @@ def test_house_pins_filecache_memorysize_to_20_on_every_class(monkeypatch):
     profile = _import_profile(monkeypatch)
     from resources.lib.modules import _kodisettings
 
-    for cls in ("fireos", "tvos", "bench"):
+    for cls in ("fireos", "tvos", "androidtv", "bench"):
         bundle = profile.load(str(HOUSE), cls)
         values = dict(bundle["class_a"])
         assert values.get("filecache.memorysize") == "20", (
@@ -298,9 +442,11 @@ def test_filecache_pin_rejected_at_any_value_but_the_restore_reset_target(
 
 
 def test_unresolved_device_class_is_a_hard_failure(monkeypatch):
+    # androidtv graduated to a real class 2026-08-31, so the unknown example
+    # here has to be something the fleet will never grow.
     profile = _import_profile(monkeypatch)
     with pytest.raises(profile.ProfileError):
-        profile.load(str(HOUSE), "androidtv")
+        profile.load(str(HOUSE), "webos")
 
 
 def test_missing_overlay_for_the_running_class_is_a_hard_failure(

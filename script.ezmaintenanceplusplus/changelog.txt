@@ -1,3 +1,11 @@
+v2026.08.31.5
+- Backups now go to the right folder for each device type. The Settings
+  Profile used to point every Android box at the Fire TV backup folder; it
+  now tells Fire TV and other Android TV devices (like the Shield) apart and
+  gives each its own folder, with Apple TV keeping its own as before. The
+  change lands the next time the profile runs; existing backups stay where
+  they are and can still be restored.
+
 v2026.08.31.4
 - The news ticker no longer retries two dead kodi.tv feeds.
 

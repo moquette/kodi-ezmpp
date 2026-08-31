@@ -1,6 +1,6 @@
 {
   "name": "House",
   "schema_version": 1,
-  "bundle_version": "2026.08.31.3",
+  "bundle_version": "2026.08.31.5",
   "description": "The owner's standard box: web control at kodi/kodi:8080, remote control on, add-ons from any repository, guide and language defaults, the expert settings level, the curated news feeds, Multi Weather with the house location and the top-bar weather, the .T7B repository and the mini's NFS shares, and this add-on's backup folder for the device class."
 }

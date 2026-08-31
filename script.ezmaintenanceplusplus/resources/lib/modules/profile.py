@@ -101,6 +101,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -113,7 +114,7 @@ import xbmcvfs
 from resources.lib.modules import _kodisettings, nsud
 
 SCHEMA_VERSION = 1
-DEVICE_CLASSES = ("fireos", "tvos", "bench")
+DEVICE_CLASSES = ("fireos", "tvos", "androidtv", "bench")
 OWN_ID = "script.ezmaintenanceplusplus"
 
 # The three ids Kodi gates behind its own modal confirm, mapped to the core
@@ -158,16 +159,43 @@ class ProfileError(Exception):
 # Environment helpers (NOT used inside load/plan, which stay pure)
 # --------------------------------------------------------------------------- #
 def detect_device_class():
-    """tvOS is System.Platform.TVOS (as nsud._is_tvos does), Fire TV is
-    System.Platform.Android, and the bench is neither (plan 7.1)."""
+    """tvOS is System.Platform.TVOS (as nsud._is_tvos does), the bench is
+    neither flag (plan 7.1). Android splits on the manufacturer, because Kodi
+    has no Amazon flag: Fire OS devices report ``ro.product.manufacturer`` as
+    ``Amazon`` and true Android TV does not (measured from inside Kodi's
+    Python on 2026-08-31: the bedroom Fire TV AFTHA001 returned ``Amazon``,
+    the Shield returned ``NVIDIA``)."""
     try:
         if xbmc.getCondVisibility("System.Platform.TVOS"):
             return "tvos"
         if xbmc.getCondVisibility("System.Platform.Android"):
-            return "fireos"
+            return "fireos" if _android_is_amazon() else "androidtv"
     except Exception:
         pass
     return "bench"
+
+
+def _android_is_amazon():
+    """True when the Android box is an Amazon (Fire OS) device.
+
+    ``getprop`` is world-executable on both device makes (a toolbox symlink,
+    measured 2026-08-31 on a Fire stick and the Shield) and
+    ``subprocess.check_output`` works from inside Kodi's Python on both
+    (measured the same day, from a RunScript inside a running Kodi). Any
+    failure - a missing binary, a timeout, an empty value - returns True,
+    because fireos is the classification every Android box had before the
+    split: a probe failure must keep a box where it already was, never strand
+    it in a wrong NEW class."""
+    try:
+        out = subprocess.check_output(
+            ["/system/bin/getprop", "ro.product.manufacturer"], timeout=10
+        )
+        manufacturer = out.decode("utf-8", "replace").strip()
+        if not manufacturer:
+            return True
+        return manufacturer.lower() == "amazon"
+    except Exception:
+        return True
 
 
 def default_bundle_dir():

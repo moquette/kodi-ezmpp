@@ -42,11 +42,13 @@ Layout and rules (the loader enforces all of them; see
   same flush). Parsed only by this add-on, so comments are fine. Bools only,
   by design - a string payload adds `Skin.SetString` with the builtin-quoting
   guard the day one exists.
-- `overlays/<class>/`: fireos, tvos, bench. Device-scoped leaves (the backup
-  folder) exist ONLY here, and loading FAILS when the running class has no
-  overlay, so an Apple TV can never silently inherit the Fire TV folder. The
-  bench overlay deliberately reproduces the fireos leaf, matching how the
-  bench has always been seeded.
+- `overlays/<class>/`: fireos, tvos, androidtv, bench. Device-scoped leaves
+  (the backup folder) exist ONLY here, and loading FAILS when the running
+  class has no overlay, so an Apple TV can never silently inherit the Fire TV
+  folder. androidtv is true Android TV (the Shield): same leaves as fireos but
+  pointing at `Backup/androidtv/`, and no event-server override (the esenabled
+  false workaround is tvOS-specific). The bench overlay deliberately
+  reproduces the fireos leaf, matching how the bench has always been seeded.
 - Comment nodes are rejected in any `addon_data` document at load: Kodi's
   `CAddonSettings::Load` calls `Attribute("id")` on every child without
   checking it is an element, and a comment node is a SIGABRT on the first
