@@ -1346,7 +1346,7 @@ def test_skin_bool_apply_already_and_no_skin_paths(monkeypatch, tmp_path):
 #    arm 3: the relaunched GUI settings window read "Expert", and a further
 #           clean quit with nothing armed re-serialized 3 (self-sustaining).
 # --------------------------------------------------------------------------- #
-HOUSE_RSS_MD5 = "49be4fb0fffc6925eb96ad2bca44c186"  # the owner's curated list
+HOUSE_RSS_MD5 = "70c3e435e2c272225142fd1dbba8b836"  # the owner's curated list
 
 _FLUSHED_GUISETTINGS_STANDARD = (
     '<settings version="2">'
@@ -1366,9 +1366,10 @@ def test_house_carries_the_expert_settinglevel_node(monkeypatch):
 
 
 def test_house_rssfeeds_is_the_owners_curated_list(monkeypatch):
-    """The bundle's RssFeeds.xml is the exact byte-for-byte file fetched from
-    the mini's share (md5 pinned) with the owner's 8 feeds - a silent re-copy
-    or hand-edit fails here, in CI."""
+    """The bundle's RssFeeds.xml is the owner's curated list, md5 pinned: the
+    file fetched from the mini's share minus the two dead kodi.tv addon feeds
+    (404 on every boot, trimmed 2026.08.31.4), 6 feeds - a silent re-copy or
+    hand-edit fails here, in CI."""
     import hashlib
 
     profile = _import_profile(monkeypatch)
@@ -1376,7 +1377,7 @@ def test_house_rssfeeds_is_the_owners_curated_list(monkeypatch):
     assert hashlib.md5(raw).hexdigest() == HOUSE_RSS_MD5
     root = ET.fromstring(raw)
     feeds = [n for n in root.iter("feed") if (n.text or "").strip()]
-    assert len(feeds) == 8
+    assert len(feeds) == 6
     for cls in ("fireos", "tvos", "bench"):
         assert profile.load(str(HOUSE), cls)["rssfeeds"] == raw, cls
 

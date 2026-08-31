@@ -1,3 +1,6 @@
+v2026.08.31.4
+- The news ticker no longer retries two dead kodi.tv feeds.
+
 v2026.08.31.3
 - Multi Weather with the house location is set up automatically; the top bar
   shows the weather. The Settings Profile now installs the Multi Weather add-on
