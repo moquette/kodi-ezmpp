@@ -246,7 +246,7 @@ def test_in_scope_keys_are_kept(env):
     env.enable_tvos()
     in_scope = (
         "guisettings.xml",  # top-level userdata xml
-        "keymaps/custom.xml",  # non-addon_data nested xml: Kodi reads it via VFS
+        "sources.xml",  # top-level userdata xml
         "addon_data/pvr.iptvsimple/settings.xml",
         "addon_data/pvr.iptvsimple/instance-settings-1.xml",
     )
@@ -322,6 +322,85 @@ def test_siriremote_key_is_never_deleted_and_posix_file_untouched(env):
     )
     assert (env.userdata / rel).read_bytes() == b"<the only real copy/>"
     assert KEY_PREFIX + rel in env.plist_keys()
+
+
+# --------------------------------------------------------------------------- #
+# keymaps/ keys are OUT of scope (2026-08-30, measured on atv1): a keymap key
+# shadows the plain-open() writes Apple TV Fixes makes to keymaps forever, so
+# the purge must clean any that exist. This is the self-heal path for the stray
+# /userdata/keymaps/t7b-siriremote.xml key the .30.2 restore left on atv1: the
+# boot-time once-per-version purge (service._maybe_purge_stale_nsud_keys) runs
+# again on the version that ships this scope change and drops it.
+# --------------------------------------------------------------------------- #
+def test_stray_keymap_key_only_is_materialized_then_purged(env):
+    # The exact atv1 state: the old rewrite vectored the keymap AND dropped the
+    # POSIX copy, so the key is the ONLY copy. The purge must put the bytes back
+    # on disk with plain open() semantics BEFORE dropping the key.
+    env.enable_tvos()
+    rel = "keymaps/t7b-siriremote.xml"
+    content = b"<keymap><global><key id='61624'>Back</key></global></keymap>"
+    env.seed_plist({KEY_PREFIX + rel: content})
+
+    result = env.mod.purge_stale_keys(str(env.userdata))
+
+    assert result == (1, 1, 0, 0)
+    assert (env.userdata / rel).read_bytes() == content, (
+        "the keymap must be materialized to POSIX before its key is dropped"
+    )
+    assert KEY_PREFIX + rel not in env.plist_keys(), (
+        "the keymap key must be GONE - it shadows every future plain-open() "
+        "keymap write Apple TV Fixes makes"
+    )
+    assert env.deleted == [SPECIAL_PREFIX + rel]
+
+
+def test_stray_keymap_key_with_posix_twin_is_purged_disk_kept(env):
+    # The other atv1-plausible state: Apple TV Fixes re-wrote the file with
+    # plain open() after the restore, so a (newer) POSIX twin exists under the
+    # (stale) key. The key goes, the disk file - the truth - stays untouched.
+    env.enable_tvos()
+    rel = "keymaps/t7b-siriremote.xml"
+    env.seed_plist({KEY_PREFIX + rel: b"<keymap>stale restore-era copy</keymap>"})
+    _write(env.userdata, rel, b"<keymap>fresh apple-tv-fixes write</keymap>")
+
+    result = env.mod.purge_stale_keys(str(env.userdata))
+
+    assert result == (0, 1, 0, 0)
+    assert KEY_PREFIX + rel not in env.plist_keys()
+    assert (env.userdata / rel).read_bytes() == b"<keymap>fresh apple-tv-fixes write</keymap>"
+    assert env.deleted == [SPECIAL_PREFIX + rel]
+
+
+def test_profile_keymap_key_is_also_purged(env):
+    # Per-profile keymaps are written the same plain-open() way; the scope rule
+    # is the directory, not the one file the incident happened to hit.
+    env.enable_tvos()
+    rel = "profiles/Kids/keymaps/gen.xml"
+    env.seed_plist({KEY_PREFIX + rel: b"<keymap/>"})
+    _write(env.userdata, rel, b"<keymap/>")
+
+    result = env.mod.purge_stale_keys(str(env.userdata))
+
+    assert result == (0, 1, 0, 0)
+    assert KEY_PREFIX + rel not in env.plist_keys()
+    assert (env.userdata / rel).exists()
+
+
+def test_siriremote_customcontroller_still_kept_inside_keymaps_scope(env):
+    # The WantsFile delete guard OUTRANKS the keymaps purge scope: an (impossible
+    # by construction, guarded anyway) customcontroller.SiriRemote key must still
+    # never reach xbmcvfs.delete, because there the delete would dispatch to
+    # CPosixFile and remove the real disk file.
+    env.enable_tvos()
+    rel = "keymaps/customcontroller.SiriRemote.xml"
+    env.seed_plist({KEY_PREFIX + rel: b"<key-anomaly/>"})
+    _write(env.userdata, rel, b"<the only real copy/>")
+
+    result = env.mod.purge_stale_keys(str(env.userdata))
+
+    assert result == (0, 0, 1, 0)
+    assert env.deleted == []
+    assert (env.userdata / rel).read_bytes() == b"<the only real copy/>"
 
 
 def test_non_xml_key_is_never_deleted(env):

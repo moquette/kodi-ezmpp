@@ -123,6 +123,9 @@ def _should_vector(rel):
 
     So we vector exactly what Kodi reads via the VFS and nothing else:
       * top-level `userdata/*.xml` (guisettings, profiles, sources, RssFeeds, favourites...)
+        EXCEPT anything under a `keymaps/` dir, which stays POSIX-only: Apple TV Fixes
+        writes keymaps with plain open() (playbook section 15), so a key would shadow
+        every future keymap update (measured on atv1, 2026-08-30 - see the guard below)
       * `addon_data/<id>/settings.xml` and `addon_data/<id>/instance-settings-*.xml` - BOTH
         are owned and read by Kodi's own add-on-settings framework through the VFS, not by
         the add-on with plain open(). (No IPTV special-casing: this is a generic rule about
@@ -165,6 +168,19 @@ def _should_vector(rel):
     # would ALWAYS pass without a single byte ever reaching NSUserDefaults, and we would then
     # os.remove() the ONLY copy. Never vector (and therefore never drop) it.
     if base.lower().startswith("customcontroller.siriremote"):
+        return False
+    # keymaps/ (master profile AND profiles/<name>/keymaps/) must stay POSIX-only.
+    # MEASURED on atv1 2026-08-30 (the restore-cycle hardware proof): the restore's
+    # durability rewrite vectored keymaps/t7b-siriremote.xml into NSUserDefaults and
+    # dropped the POSIX copy. Apple TV Fixes (service.tvos.pythonfix) writes that file
+    # with plain open() - the POSIX-only contract in the Apple TV playbook, SKILL.md
+    # section 15 - so once a key exists it SHADOWS every future keymap update forever
+    # (Kodi reads keymaps through its VFS, key first). Excluding the whole keymaps dir
+    # here keeps the extract's plain-POSIX copy authoritative, exactly as on Fire TV /
+    # desktop, and makes purge_stale_keys treat any existing keymap key as
+    # out-of-scope: materialize-if-only-copy, then drop (that purge is what heals the
+    # stray key already sitting on atv1 at its first boot after this ships).
+    if "keymaps" in rel.lower().split("/")[:-1]:
         return False
     if "addon_data/" not in rel:
         return True  # top-level userdata xml: Kodi reads it through the VFS

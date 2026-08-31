@@ -441,6 +441,62 @@ def test_persist_one_siri_remote_keymap_never_vectored(nsud, tmp_path, monkeypat
     assert (tmp_path / rel).read_bytes() == b"<keymap/>"
 
 
+def test_persist_one_keymaps_left_on_disk_never_vectored(nsud, tmp_path, monkeypatch):
+    # keymaps/ is POSIX-only by policy (2026-08-30, measured on atv1): Apple TV
+    # Fixes writes keymaps with plain open(), so a key would shadow its every
+    # future write. persist_one must leave the file alone and report success.
+    _enable_tvos(monkeypatch)
+    rel = "keymaps/t7b-siriremote.xml"
+    _write(tmp_path, rel, b"<keymap/>")
+
+    assert nsud.mod.persist_one(rel) is True
+    assert nsud.store == {}, "a keymap must never be vectored"
+    assert (tmp_path / rel).read_bytes() == b"<keymap/>"
+
+
+# --------------------------------------------------------------------------- #
+# The restore-extract API split (2026-08-30, measured on atv1): the extract lands
+# every member as plain POSIX; the durability rewrite that follows must vector
+# ONLY what _should_vector approves. keymaps/ is out of scope - the .30.2 rewrite
+# vectored keymaps/t7b-siriremote.xml and dropped its POSIX copy, so the stale
+# key shadowed every future plain-open() write Apple TV Fixes makes to that file
+# (the playbook's POSIX-only contract, SKILL.md section 15).
+# --------------------------------------------------------------------------- #
+def test_should_vector_excludes_keymaps_master_and_per_profile(nsud):
+    sv = nsud.mod._should_vector
+    assert sv("keymaps/t7b-siriremote.xml") is False
+    assert sv("keymaps/keyboard.xml") is False
+    assert sv("profiles/Kids/keymaps/gen.xml") is False
+    assert sv("keymaps\\t7b-siriremote.xml") is False  # backslash form normalizes
+    # The in-scope neighbors stay in scope - the split, not a blanket retreat.
+    assert sv("guisettings.xml") is True
+    assert sv("sources.xml") is True
+    assert sv("addon_data/pvr.iptvsimple/instance-settings-1.xml") is True
+
+
+def test_rewrite_leaves_restored_keymap_posix_only_zero_key(
+    nsud, tmp_path, monkeypatch
+):
+    # The restore sequence on tvOS, as wiz runs it: the extract wrote both files
+    # plain-POSIX; the rewrite must vector guisettings (and drop its POSIX twin,
+    # the load-bearing durability) while the keymap stays disk-only with ZERO key.
+    _enable_tvos(monkeypatch)
+    _write(tmp_path, "guisettings.xml", b"<settings/>")
+    _write(tmp_path, "keymaps/t7b-siriremote.xml", b"<keymap/>")
+
+    nsud.mod.rewrite_userdata_xml(str(tmp_path))
+
+    assert nsud.store["special://home/userdata/guisettings.xml"] == b"<settings/>"
+    assert not (tmp_path / "guisettings.xml").exists()
+    assert "special://home/userdata/keymaps/t7b-siriremote.xml" not in nsud.store, (
+        "the restore must never create a keymap key - it would shadow Apple TV "
+        "Fixes' plain-open() keymap writes forever"
+    )
+    assert (tmp_path / "keymaps" / "t7b-siriremote.xml").read_bytes() == b"<keymap/>", (
+        "the keymap's POSIX copy is the only copy and must stand untouched"
+    )
+
+
 def test_persist_one_returns_false_when_vector_fails(nsud, tmp_path):
     _write(tmp_path, "sources.xml", b"<sources/>")
     nsud.state["fail_writes"] = True

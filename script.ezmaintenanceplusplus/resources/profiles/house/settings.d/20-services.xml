@@ -42,4 +42,14 @@
          bench, 2026-08-30, SIGKILL required). It is only ever set in-process. -->
     <setting id="services.esenabled">true</setting>
     <setting id="services.esallinterfaces">true</setting>
+
+    <!-- Video cache buffer (Services > Caching), pinned to Kodi's own default
+         on EVERY device class - the point is fleet convergence: before the pin
+         the id floated across restore/flush cycles (archive 64, box 20,
+         measured on atv1 during the 2026-08-30 restore-cycle proof). 20 is the
+         ONLY value the loader accepts for this id (_kodisettings._PROFILE_MAY_PIN):
+         it must equal the value every restore resets it to (KODI_DEFAULT_CACHE_MB)
+         or the profile and the restore would flip-flop the fleet forever. The
+         200-era raise is settled dead: docs/next-update-candidates.md item 1. -->
+    <setting id="filecache.memorysize">20</setting>
 </settings>

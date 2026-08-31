@@ -1,3 +1,12 @@
+v2026.08.30.3
+- On Apple TV, restoring a backup no longer leaves a hidden second copy of the
+  remote-control file behind. That hidden copy could silently block every later
+  update to the remote's buttons. A box that already has one cleans it up on its
+  own the first time Kodi starts after this update; there is nothing to do by hand.
+- The Settings Profile now also keeps the video cache size at Kodi's standard 20 MB
+  on every box, the same value a restore has always reset it to, so the number
+  stays consistent across the whole fleet instead of drifting from box to box.
+
 v2026.08.30.2
 - New: Settings Profile. One menu item sets up a fresh box the standard way in one
   pass: web and remote control on, add-ons allowed from any source, the Tony.7.Bones

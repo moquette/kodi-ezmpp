@@ -86,6 +86,25 @@ _BOOT_STATE_ONLY = frozenset(
     ("lookandfeel.skin", "services.devicename", "filecache.memorysize")
 )
 
+# Kodi's factory-default video cache buffer (MB). CANONICAL HERE - tools.py aliases it
+# as KODI_DEFAULT_MB - because two mechanisms must land on the same number or the fleet
+# flip-flops between them forever: every restore/wipe RESETS filecache.memorysize to
+# this (tools.reset_cache_buffer, owner decision 2026-07-31), and the Settings Profile
+# PINS it to the same value on every device class (owner decision 2026-08-30, fleet
+# convergence - before the pin, the id floated across restore/flush cycles: archive 64,
+# box 20, measured on atv1 during the 2026-08-30 restore-cycle proof).
+KODI_DEFAULT_CACHE_MB = 20
+
+# The one _BOOT_STATE_ONLY carve-out for the Settings Profile, imported by profile.py
+# rather than restated (two copies of a predicate drifting is the failure that forced
+# restorecheck to import nsud._is_skin_menu_sidecar). _BOOT_STATE_ONLY forbids the
+# ARCHIVE's value from winning a restore; the profile is not an archive, it is the
+# owner's canonical intent - but it may pin filecache.memorysize ONLY to the exact
+# value every restore resets it to, so the two mechanisms can never disagree. The
+# other two ids stay forbidden everywhere: services.devicename is per-box and
+# lookandfeel.skin live-applied starts the unanswerable keep-skin countdown.
+_PROFILE_MAY_PIN = {"filecache.memorysize": str(KODI_DEFAULT_CACHE_MB)}
+
 
 def apply_guisettings(guisettings_path):
     """Push each value from a restored guisettings.xml into Kodi's live settings via

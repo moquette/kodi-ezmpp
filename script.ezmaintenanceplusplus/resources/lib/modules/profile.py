@@ -259,11 +259,24 @@ def _load_class_a(bundle_dir, overlay_dir, known_ids, problems):
             if sid in _kodisettings._BOOT_STATE_ONLY:
                 # Imported, never restated: two copies of this predicate
                 # drifting is the failure that forced restorecheck to import
-                # nsud._is_skin_menu_sidecar (plan 4.1).
-                problems.append(
-                    "%s: %s is in _kodisettings._BOOT_STATE_ONLY and must "
-                    "never be applied" % (short, sid)
-                )
+                # nsud._is_skin_menu_sidecar (plan 4.1). One carve-out, also
+                # imported: _PROFILE_MAY_PIN allows filecache.memorysize, and
+                # ONLY at the exact value every restore resets it to
+                # (KODI_DEFAULT_CACHE_MB) - a bundle pinning any other number
+                # would flip-flop against the restore reset forever, so it is
+                # rejected here, per occurrence, overlays included.
+                allowed = _kodisettings._PROFILE_MAY_PIN.get(sid)
+                text = (node.text or "").strip()
+                if allowed is None:
+                    problems.append(
+                        "%s: %s is in _kodisettings._BOOT_STATE_ONLY and must "
+                        "never be applied" % (short, sid)
+                    )
+                elif text != allowed:
+                    problems.append(
+                        "%s: %s may only be pinned to %s (the value every "
+                        "restore resets it to), got %r" % (short, sid, allowed, text)
+                    )
             if known_ids is not None and sid not in known_ids:
                 problems.append(
                     "%s: %s is not in the captured setting-id catalog" % (short, sid)

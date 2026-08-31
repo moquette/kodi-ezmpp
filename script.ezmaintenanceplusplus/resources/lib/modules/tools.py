@@ -21,6 +21,7 @@ import os
 import re
 from resources.lib.modules.backtothefuture import unicode, PY2
 from resources.lib.modules import ui
+from resources.lib.modules._kodisettings import KODI_DEFAULT_CACHE_MB
 
 if PY2:
     translatePath = xbmc.translatePath
@@ -39,7 +40,11 @@ ADV_XML = "special://home/userdata/advancedsettings.xml"
 # advancedsettings.xml <cache> is DEPRECATED and IGNORED. So we read/write it via JSON-RPC,
 # which is what actually takes effect. (Confirmed from the Omega source + v21 wiki.)
 CACHE_SETTING = "filecache.memorysize"
-KODI_DEFAULT_MB = 20  # Kodi's factory-default cache buffer
+# Kodi's factory-default cache buffer. Canonical in _kodisettings (KODI_DEFAULT_CACHE_MB,
+# imported at the top of this file) so the restore reset and the Settings Profile pin can
+# never drift apart; aliased here for this module's consumers (reset_cache_buffer,
+# wiz._preserve_device_settings).
+KODI_DEFAULT_MB = KODI_DEFAULT_CACHE_MB
 
 # Device name lives in the core setting `services.devicename` (Settings > Services > General).
 # Set via JSON-RPC like the cache buffer; persisted both-ways (see _set_devicename).

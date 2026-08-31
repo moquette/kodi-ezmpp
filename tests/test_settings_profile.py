@@ -156,9 +156,10 @@ def test_house_bundle_loads_for_every_device_class(monkeypatch):
     for cls in ("fireos", "tvos", "bench"):
         bundle = profile.load(str(HOUSE), cls)
         assert bundle["device_class"] == cls
-        assert len(bundle["class_a"]) == 16, (
-            "the House bundle carries 16 class A ids (13 from the plan plus "
-            "the three added to bootstrapper after 2026-08-04)"
+        assert len(bundle["class_a"]) == 17, (
+            "the House bundle carries 17 class A ids (13 from the plan, the "
+            "three added to bootstrapper after 2026-08-04, plus the "
+            "filecache.memorysize convergence pin added 2026-08-30)"
         )
         assert len(bundle["sources"]) == 3
         assert {a["id"] for a in bundle["addons"]} == {
@@ -176,7 +177,7 @@ def test_house_bundle_passes_the_authoring_catalog_gate(monkeypatch):
     profile = _import_profile(monkeypatch)
     for cls in ("fireos", "tvos", "bench"):
         bundle = profile.load(str(HOUSE), cls, known_ids=_catalog())
-        assert len(bundle["class_a"]) == 16, cls
+        assert len(bundle["class_a"]) == 17, cls
 
 
 def test_house_overlays_differ_per_class_and_bench_is_deliberate(monkeypatch):
@@ -212,6 +213,73 @@ def test_house_esenabled_split_tvos_false_others_true(monkeypatch):
         assert order.index("services.esenabled") < order.index(
             "services.esallinterfaces"
         ), "%s: the overlay override moved esenabled after its dependent" % cls
+
+
+def test_house_pins_filecache_memorysize_to_20_on_every_class(monkeypatch):
+    """The video cache buffer convergence pin (owner accepted 2026-08-30): 20,
+    Kodi's own default and the exact value every restore resets the id to
+    (tools.KODI_DEFAULT_MB aliases the same _kodisettings constant, so the two
+    mechanisms cannot drift). ALL device classes, no overlay split - the point
+    is fleet convergence; before the pin the id floated across restore/flush
+    cycles (archive 64, box 20, measured on atv1, 2026-08-30)."""
+    profile = _import_profile(monkeypatch)
+    from resources.lib.modules import _kodisettings
+
+    for cls in ("fireos", "tvos", "bench"):
+        bundle = profile.load(str(HOUSE), cls)
+        values = dict(bundle["class_a"])
+        assert values.get("filecache.memorysize") == "20", (
+            "%s must pin filecache.memorysize to 20" % cls
+        )
+    # The pinned value IS the restore-reset target, by construction not by luck.
+    assert str(_kodisettings.KODI_DEFAULT_CACHE_MB) == "20"
+
+
+def test_filecache_pin_rejected_at_any_value_but_the_restore_reset_target(
+    monkeypatch, tmp_path
+):
+    """The carve-out is the VALUE, not the id: a bundle pinning any number the
+    restore does not reset to would flip-flop the fleet between the profile and
+    every restore, forever. Rejected at load, per occurrence, overlays included."""
+    profile = _import_profile(monkeypatch)
+    ok = make_bundle(
+        tmp_path / "ok",
+        fragments={
+            "20-x.xml": '<settings version="2">'
+            '<setting id="filecache.memorysize">20</setting></settings>'
+        },
+    )
+    bundle = profile.load(str(ok), "fireos")
+    assert ("filecache.memorysize", "20") in bundle["class_a"]
+
+    bad = make_bundle(
+        tmp_path / "bad",
+        fragments={
+            "20-x.xml": '<settings version="2">'
+            '<setting id="filecache.memorysize">64</setting></settings>'
+        },
+    )
+    with pytest.raises(profile.ProfileError) as e:
+        profile.load(str(bad), "fireos")
+    assert "20" in str(e.value)
+
+    # An overlay sneaking a different value over a clean base is caught too:
+    # the check runs per OCCURRENCE, not on the merged winner alone.
+    sneaky = make_bundle(
+        tmp_path / "sneaky",
+        fragments={
+            "20-x.xml": '<settings version="2">'
+            '<setting id="filecache.memorysize">20</setting></settings>'
+        },
+        overlay_fragments={
+            "tvos": {
+                "20-x.xml": '<settings version="2">'
+                '<setting id="filecache.memorysize">200</setting></settings>'
+            }
+        },
+    )
+    with pytest.raises(profile.ProfileError):
+        profile.load(str(sneaky), "tvos")
 
 
 def test_unresolved_device_class_is_a_hard_failure(monkeypatch):
@@ -572,6 +640,9 @@ _SEED_SETTINGS = {
     "locale.audiolanguage": "mediadefault",
     "locale.subtitlelanguage": "forced_only",
     "lookandfeel.enablerssfeeds": False,
+    # A drifted box (the atv1 archive carried 64): the convergence pin must
+    # actually move it to 20, not find it already there.
+    "filecache.memorysize": 64,
 }
 
 _GUISETTINGS_SEED = (
