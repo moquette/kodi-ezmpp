@@ -374,18 +374,53 @@ def _destination():
         return 0
 
 
+def _device_backup_prefix():
+    """Sanitized services.devicename for backup filenames, or "" for no prefix.
+
+    The bootstrap names each box with its fleet alias (ts1, atv2, office...), so
+    a backup made there is "<devicename>_kodi_backup_<stamp>.zip" and you can
+    tell whose archive it is from the listing. A box with NO real name - the
+    setting empty, unreadable, or still Kodi's stock default "Kodi" - gets no
+    prefix and keeps the plain historical name, so nothing ever writes a
+    meaningless "kodi_kodi_backup". Sanitized for filenames: lowercased, spaces
+    to underscores, everything outside [a-z0-9_-] stripped. The prefix only
+    changes the SUGGESTED name: every consumer (restore's listing, rotation,
+    Dropbox ordering, the type hint) matches on the trailing stamp or a
+    substring, never on this prefix, so old plain-named archives stay listed
+    and restorable forever.
+    """
+    try:
+        name = tools._get_devicename()
+    except Exception:
+        name = ""
+    name = (name or "").strip().lower()
+    name = re.sub(r"\s+", "_", name)
+    name = re.sub(r"[^a-z0-9_-]", "", name)
+    # A name that was ONLY separators/symbols must not leave a bare "_" prefix.
+    name = name.strip("_-")
+    if not name or name == "kodi":
+        return ""
+    return name
+
+
+def _default_backup_name(base):
+    """The suggested backup filename: '<devicename>_<base>', or plain <base>."""
+    prefix = _device_backup_prefix()
+    return "%s_%s" % (prefix, base) if prefix else base
+
+
 # BACKUP ZIP
 def backup(mode="full"):
     dest = _destination()
 
     if mode == "full":
-        defaultName = "kodi_backup"
+        defaultName = _default_backup_name("kodi_backup")
         BACKUPDATA = control.HOME
         getSetting = xbmcaddon.Addon().getSetting
         if getSetting("BackupFixSpecialHome") == "true":
             FIX_SPECIAL()
     elif mode == "userdata":
-        defaultName = "kodi_settings"
+        defaultName = _default_backup_name("kodi_settings")
         BACKUPDATA = control.USERDATA
     else:
         return

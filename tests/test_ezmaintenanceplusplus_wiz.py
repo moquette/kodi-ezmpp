@@ -3994,3 +3994,130 @@ def test_texture_exclusion_does_not_eat_third_party_addon_data(wiz):
     # surviving database is a silent rollback of state the user did not ask to lose.
     assert wiz._is_regenerable_cache_arc("userdata/Database/Textures13.db-journal")
     assert wiz._is_regenerable_cache_arc("userdata/Database/Textures13.db-wal")
+
+
+# --------------------------------------------------------------------------- #
+# Device-name prefix on backup filenames (2026.08.31.2). The suggested name is
+# "<devicename>_kodi_backup"; a box with no real name keeps the plain historical
+# name, and NOTHING downstream may match on the prefix, so old archives stay
+# visible to restore and rotation forever.
+# --------------------------------------------------------------------------- #
+
+
+def test_default_backup_name_carries_the_device_name(wiz, monkeypatch):
+    monkeypatch.setattr(wiz.tools, "_get_devicename", lambda: "ts1")
+    assert wiz._default_backup_name("kodi_backup") == "ts1_kodi_backup"
+    assert wiz._default_backup_name("kodi_settings") == "ts1_kodi_settings"
+
+
+def test_default_backup_name_plain_when_devicename_empty(wiz, monkeypatch):
+    monkeypatch.setattr(wiz.tools, "_get_devicename", lambda: "")
+    assert wiz._default_backup_name("kodi_backup") == "kodi_backup"
+
+
+def test_default_backup_name_plain_on_kodi_stock_default(wiz, monkeypatch):
+    # A fresh install is already named "Kodi": that is not a real name, and
+    # "kodi_kodi_backup" would be noise. Any casing of the stock default counts.
+    for stock in ("Kodi", "kodi", "KODI"):
+        monkeypatch.setattr(wiz.tools, "_get_devicename", lambda s=stock: s)
+        assert wiz._default_backup_name("kodi_backup") == "kodi_backup"
+
+
+def test_default_backup_name_plain_when_devicename_unreadable(wiz, monkeypatch):
+    def _boom():
+        raise RuntimeError("JSON-RPC unavailable")
+
+    monkeypatch.setattr(wiz.tools, "_get_devicename", _boom)
+    assert wiz._default_backup_name("kodi_backup") == "kodi_backup"
+
+
+def test_device_backup_prefix_sanitizes_for_filenames(wiz, monkeypatch):
+    # Lowercase, spaces to underscores, everything outside [a-z0-9_-] stripped.
+    monkeypatch.setattr(wiz.tools, "_get_devicename", lambda: "Living Room TV!")
+    assert wiz._device_backup_prefix() == "living_room_tv"
+    # A name that sanitizes to nothing gives NO prefix, not a bare underscore.
+    monkeypatch.setattr(wiz.tools, "_get_devicename", lambda: "!!! ***")
+    assert wiz._device_backup_prefix() == ""
+    assert wiz._default_backup_name("kodi_backup") == "kodi_backup"
+
+
+def test_backup_suggests_and_builds_the_device_prefixed_name(
+    wiz, monkeypatch, tmp_path
+):
+    """End to end: with a named box, backup() offers <device>_kodi_backup as the
+    keyboard default, and accepting it yields <device>_kodi_backup_<stamp>.zip."""
+    _stub_backup_env(wiz, monkeypatch, tmp_path)
+    monkeypatch.setattr(wiz.tools, "_get_devicename", lambda: "ts1")
+    offered = {}
+
+    def _keyboard(default="", **k):
+        offered["default"] = default
+        return default  # the user accepts the suggestion
+
+    monkeypatch.setattr(wiz.tools, "_get_keyboard", _keyboard)
+    monkeypatch.setattr(wiz.ui, "confirm", lambda *a, **k: True)
+    captured = {}
+
+    def _fake_create_zip(src, dst, *a, **k):
+        captured["dst"] = dst
+        return False
+
+    monkeypatch.setattr(wiz, "CreateZip", _fake_create_zip)
+    wiz.backup(mode="full")
+    assert offered["default"] == "ts1_kodi_backup"
+    fname = Path(captured["dst"]).name
+    assert fname.startswith("ts1_kodi_backup_")
+    assert wiz._name_stamp(fname), "the auto timestamp must still be appended"
+
+
+def test_old_and_new_backup_names_both_roll_and_both_stamp(wiz):
+    """Rotation and ordering key on the trailing stamp, never the prefix: a
+    plain pre-2026.08.31.2 archive and a device-prefixed one are BOTH rolling
+    candidates, so neither generation is invisible to keep-N or to newest-first."""
+    old_name = "kodi_backup_202608310512.zip"
+    new_name = "ts1_kodi_backup_202608310512.zip"
+    assert wiz._is_rolling(old_name)
+    assert wiz._is_rolling(new_name)
+    assert wiz._name_stamp(old_name) == wiz._name_stamp(new_name) == "202608310512"
+
+
+def test_infer_type_reads_through_the_device_prefix(wiz):
+    """The restore anchor hint still classifies a prefixed name: 'backup' and
+    'kodi_settings' are substring matches, so the prefix cannot flip them."""
+    from resources.lib.modules import onetap
+
+    assert onetap.infer_type("ts1_kodi_backup_202608310512.zip") == "full"
+    assert onetap.infer_type("ts1_kodi_settings_202608310512.zip") == "userdata"
+    # And the old plain names classify exactly as before.
+    assert onetap.infer_type("kodi_backup_202608310512.zip") == "full"
+    assert onetap.infer_type("kodi_settings_202608310512.zip") == "userdata"
+
+
+def test_restore_folder_lists_old_and_new_names_side_by_side(
+    wiz, monkeypatch, tmp_path
+):
+    """restoreFolder filters on .zip alone: a folder holding one plain-named and
+    one device-prefixed archive offers BOTH. A prefix-anchored filter here is
+    the failure that would make new backups invisible to restore."""
+    monkeypatch.setattr(
+        wiz.control, "setting", lambda key: "/backups/" if key == "restore.path" else ""
+    )
+    monkeypatch.setattr(
+        wiz.xbmcvfs,
+        "listdir",
+        lambda p: ([], ["kodi_backup_202607010000.zip",
+                        "ts1_kodi_backup_202608310512.zip",
+                        "notes.txt"]),
+    )
+    seen = {}
+
+    def _select(names, *a, **k):
+        seen["names"] = list(names)
+        return -1  # cancel: listing behaviour is the whole assertion
+
+    monkeypatch.setattr(wiz.control, "selectDialog", _select)
+    wiz.restoreFolder()
+    assert seen["names"] == [
+        "kodi_backup_202607010000.zip",
+        "ts1_kodi_backup_202608310512.zip",
+    ]

@@ -1,3 +1,13 @@
+v2026.08.31.2
+- Backups now carry the box's name in the filename: a backup made on ts1 is
+  offered as ts1_kodi_backup_202608310512.zip instead of kodi_backup_202608310512.zip, so a
+  shared backup folder tells you whose file is whose at a glance. The name comes
+  from the box's own device name (Settings > Services > General), tidied for a
+  filename; a box that was never given a real name keeps the plain kodi_backup
+  name, exactly as before. You can still type any name you like, and every older
+  backup with the old name still appears in the restore list and restores
+  exactly as it always has.
+
 v2026.08.31.1
 - The Settings Profile now sets the preferred audio language to English instead
   of "Original language", so a show that carries a foreign-language soundtrack
