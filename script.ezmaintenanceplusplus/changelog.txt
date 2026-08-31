@@ -1,3 +1,10 @@
+v2026.08.31.1
+- The Settings Profile now sets the preferred audio language to English instead
+  of "Original language", so a show that carries a foreign-language soundtrack
+  plays the English track when one exists. Subtitles are unchanged: they still
+  appear only when a track is marked forced. Run it again any time, as always:
+  a box already set to English simply reports that nothing needed changing.
+
 v2026.08.30.4
 - The Settings Profile now switches the box to Kodi's Expert settings view, so
   every settings page shows everything instead of the trimmed Standard menus.

@@ -4,9 +4,11 @@
          stores "original" and "forced_only", and it silently discards any
          value it does not recognise - no error, no log line, the setting just
          reverts. The office box once played Japanese audio for six commits
-         because a comment claimed the label form was correct. Values here were
+         because a comment claimed the label form was correct. A named
+         language is stored as its English name, e.g. "English". Subtitle value
          measured off the office reference box (2026-08-18) and re-verified as
-         accepted by a live Settings.SetSettingValue on Kodi 22 (2026-08-30). -->
-    <setting id="locale.audiolanguage">original</setting>
+         accepted by a live Settings.SetSettingValue on Kodi 22 (2026-08-30);
+         audio value copied from the owner's hand-set ts1 (2026-08-30). -->
+    <setting id="locale.audiolanguage">English</setting>
     <setting id="locale.subtitlelanguage">forced_only</setting>
 </settings>
