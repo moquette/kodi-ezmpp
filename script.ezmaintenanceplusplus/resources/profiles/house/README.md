@@ -15,6 +15,17 @@ Layout and rules (the loader enforces all of them; see
   Trailing slash required; no port on nfs paths.
 - `addons.list` + `addons/*.zip`: class D, staged from the official hub zips
   and enabled through Kodi; the repository enables LAST.
+- `nodes.d/*.xml`: guisettings FILE NODES outside the `<setting id>` space
+  (`<nodes><node path="general/settinglevel">3</node></nodes>`). These cannot
+  be live-set (no JSON-RPC, builtin or Python setter) and cannot be
+  file-written while Kodi runs (the clean-close flush re-serializes them from
+  live memory - measured 2026-08-30), so apply() only ARMS them; the service
+  writes them in its abort window, after Kodi's one "Saving settings" flush,
+  and the boot check verifies. Same merge rules as `settings.d`. Comments are
+  fine here: only this add-on parses these files, never Kodi.
+- `RssFeeds.xml`: the curated feed list, a WHOLE-FILE userdata payload carried
+  verbatim and written byte-idempotently (Kodi writes that file on first run
+  only and its shutdown flush never touches it - measured 2026-08-30).
 - `overlays/<class>/`: fireos, tvos, bench. Device-scoped leaves (the backup
   folder) exist ONLY here, and loading FAILS when the running class has no
   overlay, so an Apple TV can never silently inherit the Fire TV folder. The

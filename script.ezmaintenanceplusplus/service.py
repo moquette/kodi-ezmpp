@@ -442,6 +442,30 @@ def _maybe_profile_check(monitor):
                 attention.append(
                     "%s is %r, profile wanted %r" % (sid, result["value"], text)
                 )
+        nodes = [(str(p), str(v)) for p, v in (payload.get("nodes") or [])]
+        if nodes and not _aborting(monitor):
+            if profile_mod.deferred_nodes_pending():
+                # The shutdown-window write has not had its window yet (the
+                # user chose Later, or the last close was unclean). Still
+                # owed, not failed: it lands at the next clean shutdown, so
+                # this is not a finding and nothing is said.
+                pass
+            else:
+                correct, readable = profile_mod.nodes_current(nodes)
+                if readable and not correct:
+                    attention.append(
+                        "guisettings node(s) not live after restart: %s"
+                        % ", ".join("%s=%s" % (p, v) for p, v in nodes)
+                    )
+        want_md5 = (payload.get("rssfeeds_md5") or "").strip()
+        if want_md5 and not _aborting(monitor):
+            have_md5 = profile_mod.rssfeeds_current_md5()
+            if have_md5 != want_md5:
+                attention.append(
+                    "RssFeeds.xml is not the profile's curated list after "
+                    "restart (md5 %s, wanted %s)" % (have_md5 or "unreadable",
+                                                     want_md5)
+                )
         if attention:
             for line in attention:
                 xbmc.log(
@@ -686,5 +710,28 @@ if __name__ == "__main__":
                 maintenance.clearCache()
                 xbmc.log("ezmaintenanceplus: AutoClean done", level=loglevel)
                 maintenance.determineNextMaintenance()
+
+    # THE SHUTDOWN-WINDOW WRITE (deferred guisettings nodes - the profile's
+    # expert settings level). This MUST sit here, after the loop breaks on
+    # abort: Kodi's one "Saving settings" guisettings flush
+    # (Application.cpp:1833 at a872eae1a5) runs BEFORE service add-ons are
+    # stopped (:1889), so a write made now lands AFTER the flush and is what
+    # the next boot loads, while the same write made during apply is clobbered
+    # (both MEASURED on the bench, 2026-08-30 - see profile.py's module
+    # docstring). The Python invoker grants 5 s (PythonInvoker.cpp:62); this
+    # is one os.stat when nothing is armed and one small XML rewrite when it
+    # is. Guarded: nothing here may disturb Kodi's teardown.
+    try:
+        from resources.lib.modules import profile as _profile_flush_mod
+
+        _profile_flush_mod.flush_deferred_guisettings_nodes()
+    except Exception as e:
+        try:
+            xbmc.log(
+                "ezmaintenanceplus: shutdown-window node write failed: %s" % e,
+                level=xbmc.LOGWARNING,
+            )
+        except Exception:
+            pass
 
     del monitor

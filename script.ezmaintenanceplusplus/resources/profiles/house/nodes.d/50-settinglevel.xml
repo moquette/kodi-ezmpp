@@ -1,0 +1,14 @@
+<nodes>
+    <!-- The settings UI level: 3 = Expert, the owner's standard ("I need my
+         expert UI", 2026-08-30). NOT a <setting id>: Kodi keeps it as
+         <general><settinglevel> in guisettings.xml, loaded at
+         ViewStateSettings.cpp:119-126 and re-serialized FROM LIVE MEMORY by
+         every settings save (:173-182; CViewStateSettings is an ISubSettings,
+         Settings.cpp:563, all at a872eae1a5), and it has no JSON-RPC method,
+         builtin or Python setter (experiments doc, E2). So it cannot be
+         live-set or file-written while Kodi runs; it ships as a file NODE that
+         the service writes in its abort window, AFTER Kodi's one
+         "Saving settings" flush (Application.cpp:1833 vs :1889) - measured on
+         the bench 2026-08-30, arms 1-3. All device classes, no overlay. -->
+    <node path="general/settinglevel">3</node>
+</nodes>

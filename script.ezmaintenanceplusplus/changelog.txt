@@ -1,3 +1,17 @@
+v2026.08.30.4
+- The Settings Profile now switches the box to Kodi's Expert settings view, so
+  every settings page shows everything instead of the trimmed Standard menus.
+  Kodi keeps this value in a place that cannot be changed while it is running,
+  so the profile applies it at the moment Kodi closes at the end of the run,
+  and the add-on's usual first-start check confirms it arrived. From then on it
+  stays put like any other setting.
+- The Settings Profile now also installs the house list of news feeds to go with
+  the RSS ticker switch it already turns on, so a fresh box scrolls the same
+  headlines as the rest of the fleet. This includes Apple TV, which never had a
+  way to receive the house feed list before.
+- Run it again any time, as always: a box that already has both reports that
+  nothing needed changing, and nothing is ever removed.
+
 v2026.08.30.3
 - On Apple TV, restoring a backup no longer leaves a hidden second copy of the
   remote-control file behind. That hidden copy could silently block every later

@@ -245,11 +245,23 @@ def APPLY_SETTINGS_PROFILE():
         if ":" in mac:
             break
         xbmc.sleep(200)
+    import hashlib
+
     payload = {
         "box": mac if ":" in mac else "",
         "created": time.time(),
         "sources": [path for _name, path in bundle["sources"]],
         "settings": dict(bundle["class_a"]),
+        # The two file payloads the apply flow cannot confirm live: the
+        # deferred guisettings nodes (their write happens at the shutdown the
+        # user is about to accept) and the curated feed list (read at the next
+        # start). The boot check owns both verdicts.
+        "nodes": [[p, v] for p, v in bundle["nodes"]],
+        "rssfeeds_md5": (
+            hashlib.md5(bundle["rssfeeds"]).hexdigest()
+            if bundle["rssfeeds"] is not None
+            else ""
+        ),
     }
     if not tools.mark_profile_check_pending(payload):
         xbmc.log(

@@ -40,6 +40,10 @@ class _Env:
         self.live_sources = []  # what Files.GetSources returns (paths)
         self.live_settings = {}  # sid -> live value
         self.rpc_calls = []
+        # The 2026.08.30.4 file-payload surface (stubbed profile module):
+        self.nodes_pending = False  # deferred shutdown-window write still owed
+        self.nodes_state = (True, True)  # (all_correct, readable)
+        self.rss_md5 = ""  # live RssFeeds.xml md5 as the VFS reads it
         self.marker = (
             tmp_path
             / "userdata/addon_data/script.ezmaintenanceplusplus/.ezm_profile_check"
@@ -181,6 +185,9 @@ def _load_service(monkeypatch, env):
         return str(live) == str(text)
 
     profile.values_match = _values_match
+    profile.deferred_nodes_pending = lambda: env.nodes_pending
+    profile.nodes_current = lambda nodes: env.nodes_state
+    profile.rssfeeds_current_md5 = lambda: env.rss_md5
 
     mods = dict(pkgs)
     mods.update(
@@ -362,3 +369,120 @@ def test_startup_sequence_runs_the_profile_check(env):
     src = inspect.getsource(svc._startup_sequence)
     assert "_maybe_profile_check" in src
     assert src.index("_maybe_restore_check") < src.index("_maybe_profile_check")
+
+
+# --------------------------------------------------------------------------- #
+# The 2026.08.30.4 file payloads: deferred guisettings nodes (the expert
+# settings level) and the curated RssFeeds.xml. Boot-check semantics:
+# still-armed is OWED (silent), landed-and-correct is a clean pass (silent),
+# landed-and-wrong or drifted feeds is a finding.
+# --------------------------------------------------------------------------- #
+_NODES_PAYLOAD = dict(
+    _PAYLOAD, nodes=[["general/settinglevel", "3"]], rssfeeds_md5="feedmd5"
+)
+
+
+def _live_ok(env):
+    env.live_sources = list(_PAYLOAD["sources"])
+    env.live_settings = {"services.webserver": True, "epg.selectaction": 1}
+    env.rss_md5 = "feedmd5"
+
+
+def test_landed_nodes_and_feeds_are_a_silent_clean_pass(env):
+    env.arm(_NODES_PAYLOAD)
+    _live_ok(env)
+    env.nodes_pending = False
+    env.nodes_state = (True, True)
+    svc = env.load()
+    svc._maybe_profile_check(_Mon())
+    assert env.notifications == []
+    assert any("verified live" in m for m in env.log_lines(LOGINFO))
+    assert not env.marker.exists()
+
+
+def test_still_armed_nodes_are_owed_not_failed(env):
+    """The user chose Later, or the close was unclean: the shutdown-window
+    write has not had its window, so the wrong live value is NOT a finding -
+    it lands at the next clean shutdown. Silence, clean verdict, marker
+    consumed."""
+    env.arm(_NODES_PAYLOAD)
+    _live_ok(env)
+    env.nodes_pending = True
+    env.nodes_state = (False, True)  # genuinely not landed yet
+    svc = env.load()
+    svc._maybe_profile_check(_Mon())
+    assert env.notifications == []
+    assert any("verified live" in m for m in env.log_lines(LOGINFO))
+    assert not env.marker.exists()
+
+
+def test_missed_nodes_after_the_window_raise_attention(env):
+    """Marker consumed by the flush (nothing pending) but the value did not
+    land: that IS a finding - the write claimed its window and missed."""
+    env.arm(_NODES_PAYLOAD)
+    _live_ok(env)
+    env.nodes_pending = False
+    env.nodes_state = (False, True)
+    svc = env.load()
+    svc._maybe_profile_check(_Mon())
+    assert len(env.notifications) == 1
+    assert any(
+        "guisettings node" in m for m in env.log_lines(LOGWARNING)
+    )
+    assert not env.marker.exists()
+
+
+def test_unreadable_guisettings_is_not_a_nodes_finding(env):
+    """No readable file means no verdict: the check reports nothing rather
+    than inventing a failure it cannot see."""
+    env.arm(_NODES_PAYLOAD)
+    _live_ok(env)
+    env.nodes_pending = False
+    env.nodes_state = (False, False)
+    svc = env.load()
+    svc._maybe_profile_check(_Mon())
+    assert env.notifications == []
+    assert not env.marker.exists()
+
+
+def test_drifted_rssfeeds_raise_attention(env):
+    env.arm(_NODES_PAYLOAD)
+    _live_ok(env)
+    env.rss_md5 = "somethingelse"
+    svc = env.load()
+    svc._maybe_profile_check(_Mon())
+    assert len(env.notifications) == 1
+    assert any("RssFeeds.xml" in m for m in env.log_lines(LOGWARNING))
+
+
+def test_payloads_without_the_new_keys_still_pass(env):
+    """A marker armed by 2026.08.30.3 (no nodes, no rssfeeds_md5) must keep
+    working across the update - the reader treats the absent keys as nothing
+    owed."""
+    env.arm(_PAYLOAD)
+    _live_ok(env)
+    env.nodes_state = (False, True)  # would be a finding IF nodes were owed
+    env.rss_md5 = ""
+    svc = env.load()
+    svc._maybe_profile_check(_Mon())
+    assert env.notifications == []
+    assert not env.marker.exists()
+
+
+def test_shutdown_window_flush_sits_after_the_abort_loop():
+    """The load-bearing POSITION, pinned against the source: the deferred
+    node write must run AFTER the service loop breaks on abort - that is what
+    puts it after Kodi's one "Saving settings" flush (Application.cpp:1833 vs
+    :1889 at a872eae1a5; measured on the bench 2026-08-30, arm 2) - and
+    before `del monitor`. Anywhere earlier (startup, the loop body) is the
+    clobbered arm 1."""
+    src = SERVICE_PY.read_text()
+    loop = src.index("while not monitor.abortRequested():")
+    flush = src.index("flush_deferred_guisettings_nodes")
+    del_mon = src.index("del monitor")
+    assert loop < flush < del_mon, (
+        "the shutdown-window write must sit between the abort-loop break and "
+        "del monitor"
+    )
+    # and it appears exactly once in service.py - no second, earlier caller
+    assert src.count("flush_deferred_guisettings_nodes") == 1

@@ -28,6 +28,7 @@ import json
 import sys
 import threading
 import types
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -120,6 +121,8 @@ def make_bundle(
     overlay_fragments=None,
     sources_xml=None,
     addon_data=None,
+    nodes_xml=None,
+    rssfeeds_xml=None,
     classes=("fireos", "tvos", "bench"),
 ):
     b = tmp_path / "bundle"
@@ -142,6 +145,10 @@ def make_bundle(
             _write(b / "overlays" / cls / "settings.d" / fname, body)
     if sources_xml is not None:
         _write(b / "sources.xml", sources_xml)
+    if nodes_xml is not None:
+        _write(b / "nodes.d" / "50-test.xml", nodes_xml)
+    if rssfeeds_xml is not None:
+        _write(b / "RssFeeds.xml", rssfeeds_xml)
     for aid, files in (addon_data or {}).items():
         for fname, body in files.items():
             _write(b / "overlays" / "fireos" / "addon_data" / aid / fname, body)
@@ -458,15 +465,19 @@ def test_plan_order_matches_7_4(monkeypatch):
     assert kinds.count("write-guisettings") == 1
     assert kinds.count("refresh") == 1
     assert kinds.count("sources") == 1
+    assert kinds.count("guisettings-nodes") == 1
+    assert kinds.count("rss-feeds") == 1
     # the last op is the repo enable
     assert ops[-1]["kind"] == "enable"
     assert ops[-1]["addon"] == "repository.tony7bones"
     assert ops[-1]["last"] is True
     # ordering indexes
     idx = {k: kinds.index(k) for k in ("stage", "refresh", "enable", "set",
-                                       "write-guisettings", "sources")}
+                                       "write-guisettings", "guisettings-nodes",
+                                       "sources", "rss-feeds")}
     assert idx["stage"] < idx["refresh"] < idx["enable"] < idx["set"]
-    assert idx["set"] < idx["write-guisettings"] < idx["sources"]
+    assert idx["set"] < idx["write-guisettings"] < idx["guisettings-nodes"]
+    assert idx["guisettings-nodes"] < idx["sources"] < idx["rss-feeds"]
     # class A order follows the fragments; the sets carry the confirm flag for
     # exactly the three measured confirm-gated ids
     confirm = {op["id"] for op in ops if op["kind"] == "set" and op["confirm"]}
@@ -850,10 +861,28 @@ def test_second_apply_is_already_correct_and_takes_no_new_vector(
     rig.profile.apply(ops)
     first_vectors = list(rig.vectors)
     record = rig.profile.apply(ops)
-    outcomes = {it["outcome"] for it in record["items"]}
-    assert outcomes == {"already-correct"}, record["items"]
+    # ONE deliberate carve-out: the guisettings-nodes op stays "applied" while
+    # its shutdown-window write is still pending (the level is genuinely NOT
+    # correct yet - the file reads 1 until Kodi closes - and reporting
+    # already-correct here would suppress the restart offer the landing
+    # depends on). It re-arms the same marker, which is not a userdata
+    # storage layer. Everything else is already-correct, and the storage
+    # vectors are untouched.
+    for it in record["items"]:
+        want = "applied" if it["kind"] == "guisettings-nodes" else "already-correct"
+        assert it["outcome"] == want, it
     assert rig.vectors == first_vectors, (
         "a changed-nothing re-run mutated the storage layer"
+    )
+    # After the shutdown-window write lands, the THIRD run is pure
+    # already-correct: the true idempotent fixed point.
+    assert rig.profile.flush_deferred_guisettings_nodes(log=lambda m: None)
+    third_vectors = list(rig.vectors)
+    record = rig.profile.apply(ops)
+    outcomes = {it["outcome"] for it in record["items"]}
+    assert outcomes == {"already-correct"}, record["items"]
+    assert rig.vectors == third_vectors, (
+        "the post-landing re-run mutated the storage layer"
     )
 
 
@@ -1033,3 +1062,229 @@ def test_house_zip_payloads_are_wellformed():
             names = z.namelist()
         assert all(n.startswith(aid + "/") for n in names)
         assert (aid + "/addon.xml") in names
+
+
+# --------------------------------------------------------------------------- #
+# 5. Guisettings nodes (the expert settings level) and RssFeeds.xml -
+#    the 2026.08.30.4 additions. Mechanism measured on the macOS bench,
+#    2026-08-30 (Kodi 22.0-BETA1, a872eae1a5, isolated first-run HOME):
+#    arm 1: a guisettings.xml file write made while Kodi runs is CLOBBERED by
+#           the clean-close flush (wrote 3, quit, file read 1), while a
+#           mid-session RssFeeds.xml write SURVIVES the same quit untouched;
+#    arm 2: a write made in the service's abort window lands AFTER the one
+#           "Saving settings" flush (log: flush 37.547s, abort 38.550, write
+#           38.556) and the file holds 3 after exit;
+#    arm 3: the relaunched GUI settings window read "Expert", and a further
+#           clean quit with nothing armed re-serialized 3 (self-sustaining).
+# --------------------------------------------------------------------------- #
+HOUSE_RSS_MD5 = "49be4fb0fffc6925eb96ad2bca44c186"  # the owner's curated list
+
+_FLUSHED_GUISETTINGS_STANDARD = (
+    '<settings version="2">'
+    '<setting id="lookandfeel.skin" default="true">skin.estuary</setting>'
+    "<general><settinglevel>1</settinglevel></general>"
+    "</settings>"
+)
+
+
+def test_house_carries_the_expert_settinglevel_node(monkeypatch):
+    """The owner's expert UI ships as a file NODE (never a fake setting id),
+    value 3, on EVERY device class, no overlay split."""
+    profile = _import_profile(monkeypatch)
+    for cls in ("fireos", "tvos", "bench"):
+        bundle = profile.load(str(HOUSE), cls)
+        assert bundle["nodes"] == [("general/settinglevel", "3")], cls
+
+
+def test_house_rssfeeds_is_the_owners_curated_list(monkeypatch):
+    """The bundle's RssFeeds.xml is the exact byte-for-byte file fetched from
+    the mini's share (md5 pinned) with the owner's 8 feeds - a silent re-copy
+    or hand-edit fails here, in CI."""
+    import hashlib
+
+    profile = _import_profile(monkeypatch)
+    raw = (HOUSE / "RssFeeds.xml").read_bytes()
+    assert hashlib.md5(raw).hexdigest() == HOUSE_RSS_MD5
+    root = ET.fromstring(raw)
+    feeds = [n for n in root.iter("feed") if (n.text or "").strip()]
+    assert len(feeds) == 8
+    for cls in ("fireos", "tvos", "bench"):
+        assert profile.load(str(HOUSE), cls)["rssfeeds"] == raw, cls
+
+
+def test_node_fragment_validation(monkeypatch, tmp_path):
+    """Structural rejection: wrong root, a single-segment path (that is the
+    <setting id> space's job), an uppercase path, a valueless node."""
+    profile = _import_profile(monkeypatch)
+    for bad, why in (
+        ("<settings><node path='general/settinglevel'>3</node></settings>",
+         "root element"),
+        ("<nodes><node path='general'>3</node></nodes>", "bad node path"),
+        ("<nodes><node path='General/Level'>3</node></nodes>", "bad node path"),
+        ("<nodes><node path='general/settinglevel'></node></nodes>",
+         "has no value"),
+        ("<nodes><setting id='x'>3</setting></nodes>", "unexpected"),
+    ):
+        b = make_bundle(tmp_path / why.replace(" ", "_"), nodes_xml=bad)
+        with pytest.raises(profile.ProfileError) as e:
+            profile.load(str(b), "fireos")
+        assert any(why in p for p in e.value.problems), (bad, e.value.problems)
+
+
+def test_rssfeeds_validation(monkeypatch, tmp_path):
+    """A truncated, misrooted or feedless RssFeeds.xml fails the LOAD loudly -
+    validation failure applies nothing, so a mangled list can never be
+    half-written onto a box."""
+    profile = _import_profile(monkeypatch)
+    for bad, why in (
+        ("<rssfeeds><set id='1'><feed>x</feed></set>", "parse failure"),
+        ("<feeds><set id='1'><feed>x</feed></set></feeds>", "root element"),
+        ("<rssfeeds><set id='1'></set></rssfeeds>", "no <feed> entries"),
+    ):
+        b = make_bundle(tmp_path / why.replace(" ", "_"), rssfeeds_xml=bad)
+        with pytest.raises(profile.ProfileError) as e:
+            profile.load(str(b), "fireos")
+        assert any(why in p for p in e.value.problems), (bad, e.value.problems)
+
+
+def test_settinglevel_apply_arms_and_never_writes_guisettings(
+    monkeypatch, tmp_path
+):
+    """Apply ARMS the deferred write and touches NO guisettings storage layer:
+    the bench measured a live write being clobbered by the flush (arm 1), so a
+    write here would be a false 'applied'. The marker is the whole action."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    before = bytes(rig.store.vfs_read("special://profile/guisettings.xml"))
+    ops = [{"kind": "guisettings-nodes",
+            "nodes": [("general/settinglevel", "3")]}]
+    record = rig.profile.apply(ops)
+    assert record["items"][0]["outcome"] == "applied"
+    assert "boot check" in record["items"][0]["detail"]
+    assert rig.profile.deferred_nodes_pending()
+    assert rig.profile.read_deferred_nodes() == [("general/settinglevel", "3")]
+    assert bytes(rig.store.vfs_read("special://profile/guisettings.xml")) == before
+    assert rig.vectors == [], "arming must take no vector"
+
+
+def test_settinglevel_apply_already_correct_arms_nothing(monkeypatch, tmp_path):
+    """A box already at expert reports already-correct, arms no marker, and
+    disarms a stale one - the shutdown window stays a one-stat no-op."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    rig.store.seed_disk(
+        "guisettings.xml",
+        b'<settings version="2"><general><settinglevel>3</settinglevel>'
+        b"</general></settings>",
+    )
+    ops = [{"kind": "guisettings-nodes",
+            "nodes": [("general/settinglevel", "3")]}]
+    assert rig.profile.mark_deferred_nodes_pending(
+        [("general/settinglevel", "3")]
+    )  # a stale marker from an interrupted earlier run
+    record = rig.profile.apply(ops)
+    assert record["items"][0]["outcome"] == "already-correct"
+    assert not rig.profile.deferred_nodes_pending()
+    assert rig.vectors == []
+
+
+def test_settinglevel_flush_lands_on_both_tvos_layers(monkeypatch, tmp_path):
+    """The shutdown-window write against the two-layer fake: Kodi's flush has
+    just rewritten guisettings (key layer, level 1); the flush patches the
+    node, keeps every other setting, takes exactly ONE vector, ends key-only
+    (POSIX dropped - both layers agree), and consumes the marker."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    ops = [{"kind": "guisettings-nodes",
+            "nodes": [("general/settinglevel", "3")]}]
+    rig.profile.apply(ops)
+    # Kodi's own clean-shutdown flush, as it happens on tvOS: one VFS write.
+    rig.store.vfs_write(
+        "special://profile/guisettings.xml",
+        _FLUSHED_GUISETTINGS_STANDARD.encode(),
+    )
+    base_vectors = list(rig.vectors)
+    assert rig.profile.flush_deferred_guisettings_nodes(log=lambda m: None)
+    assert not rig.profile.deferred_nodes_pending(), "marker must be consumed"
+    final = bytes(rig.store.vfs_read("special://profile/guisettings.xml"))
+    root = ET.fromstring(final)
+    assert root.find("general/settinglevel").text == "3"
+    assert root.find("setting[@id='lookandfeel.skin']") is not None, (
+        "the patch lost a pre-existing setting"
+    )
+    assert rig.store.state("guisettings.xml") == "key-only", (
+        "both tvOS layers must agree (vector confirmed, POSIX dropped)"
+    )
+    assert rig.vectors == base_vectors + ["guisettings.xml"], (
+        "the landing takes exactly ONE vector"
+    )
+
+
+def test_settinglevel_flush_already_correct_touches_nothing(
+    monkeypatch, tmp_path
+):
+    """The user set expert by hand mid-session: the flushed file already
+    carries 3, so the shutdown window consumes the marker WITHOUT writing -
+    a rewrite would be a key rewrite plus a POSIX drop on a run that changed
+    nothing (the 4.3 argument, again)."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    assert rig.profile.mark_deferred_nodes_pending(
+        [("general/settinglevel", "3")]
+    )
+    rig.store.vfs_write(
+        "special://profile/guisettings.xml",
+        b'<settings version="2"><general><settinglevel>3</settinglevel>'
+        b"</general></settings>",
+    )
+    base_vectors = list(rig.vectors)
+    assert rig.profile.flush_deferred_guisettings_nodes(log=lambda m: None)
+    assert not rig.profile.deferred_nodes_pending()
+    assert rig.vectors == base_vectors, "a no-op landing must take no vector"
+
+
+def test_settinglevel_flush_unreadable_keeps_the_marker(monkeypatch, tmp_path):
+    """An unreadable guisettings at the flush window is a KEPT marker and a
+    False, never a guessed write - the next clean shutdown retries."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    assert rig.profile.mark_deferred_nodes_pending(
+        [("general/settinglevel", "3")]
+    )
+    rig.store.vfs_delete("special://profile/guisettings.xml")
+    import os as _os
+
+    posix = rig.store.translate("special://profile/guisettings.xml")
+    if _os.path.exists(posix):
+        _os.remove(posix)
+    assert not rig.profile.flush_deferred_guisettings_nodes(log=lambda m: None)
+    assert rig.profile.deferred_nodes_pending(), "the write is still owed"
+
+
+def test_rssfeeds_two_layer_write_and_byte_idempotence(monkeypatch, tmp_path):
+    """The curated list lands on both tvOS layers (one vector, POSIX dropped,
+    key holds the exact bundle bytes) and a byte-equal re-run touches no
+    storage layer at all."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    raw = (HOUSE / "RssFeeds.xml").read_bytes()
+    ops = [{"kind": "rss-feeds", "xml": raw}]
+    record = rig.profile.apply(ops)
+    assert record["items"][0]["outcome"] == "applied"
+    assert bytes(rig.store.vfs_read("special://profile/RssFeeds.xml")) == raw
+    assert rig.store.state("RssFeeds.xml") == "key-only"
+    assert rig.vectors.count("RssFeeds.xml") == 1
+    assert record["warnings"] == [], "the vector must be CONFIRMED on tvOS"
+    record = rig.profile.apply(ops)
+    assert record["items"][0]["outcome"] == "already-correct"
+    assert rig.vectors.count("RssFeeds.xml") == 1, (
+        "a byte-equal re-run mutated the storage layer"
+    )
+
+
+def test_rssfeeds_current_md5_reads_the_vfs_layer(monkeypatch, tmp_path):
+    """The boot check's md5 comes from the VFS read (on tvOS the key - the
+    layer Kodi actually reads), so its verdict is about the bytes that feed
+    the ticker."""
+    import hashlib
+
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    assert rig.profile.rssfeeds_current_md5() == ""
+    raw = (HOUSE / "RssFeeds.xml").read_bytes()
+    rig.profile.apply([{"kind": "rss-feeds", "xml": raw}])
+    assert rig.profile.rssfeeds_current_md5() == hashlib.md5(raw).hexdigest()
+    assert rig.profile.rssfeeds_current_md5() == HOUSE_RSS_MD5

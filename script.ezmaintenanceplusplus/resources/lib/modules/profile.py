@@ -49,6 +49,31 @@ code, so they are not re-derived:
 * **This add-on's own settings go through ``setSetting()`` only** - it is
   already enabled and running, so a file write is the wrong half (plan 7.4
   step 2b).
+* **Guisettings file NODES (``nodes.d/``) are DEFERRED to the shutdown
+  window** - the one class whose write cannot land while Kodi runs. The owner's
+  expert settings level (``<general><settinglevel>3``) is not a setting id:
+  it is serialized into ``guisettings.xml`` from live memory by every settings
+  save (``CViewStateSettings`` is an ``ISubSettings``, Settings.cpp:563 at
+  a872eae1a5), it has no JSON-RPC method, builtin or Python setter (E2), and a
+  file write made while Kodi runs is clobbered by the clean-close flush
+  (MEASURED on the bench 2026-08-30, arm 1: wrote 3, quit, file read 1). But
+  Kodi's ONE "Saving settings" flush (Application.cpp:1833) runs BEFORE
+  service add-ons are stopped (Application.cpp:1889), and the Python invoker
+  grants an aborted script 5 s (PythonInvoker.cpp:62), so a write made in the
+  service's abort window lands AFTER the flush and is exactly what the next
+  boot loads (MEASURED, arm 2: flush 37.547 s, abort 38.550, write 38.556,
+  file read 3, and the relaunched GUI settings window showed "Expert"). Once
+  loaded the value self-sustains - the flush itself re-serializes it (arm 3).
+  So apply() only ARMS a marker; ``flush_deferred_guisettings_nodes`` (called
+  by service.py when its monitor aborts) performs the one write, through
+  ``nsud.persist_one`` so both tvOS layers agree, and the boot check verifies.
+* **RssFeeds.xml is a whole-file userdata payload** (the owner's curated feed
+  list, next to ``sources.xml`` in the bundle). Kodi writes the file on first
+  run only and the clean-shutdown flush never touches it (MEASURED 2026-08-30:
+  the mid-session write survived two clean quits byte-identical), so an
+  in-session write through the ordinary two-layer machinery is durable and the
+  feeds load at the next start. Byte-idempotent: an equal file is
+  already-correct and touches no storage layer (the 4.3 argument).
 * ``load()`` and ``plan()`` are PURE functions of the bundle directory and the
   injected device class / catalog: no Kodi reads inside, so the most valuable
   unit tests exist (plan 7.3). ``xbmcgui`` is never imported here; progress
@@ -59,8 +84,10 @@ Result vocabulary (plan 7.5), per ITEM because classes C and D have no ids:
 / ``error``.
 """
 
+import hashlib
 import json
 import os
+import re
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -179,6 +206,8 @@ def load(bundle_dir, device_class, known_ids=None):
     sources = _load_sources(os.path.join(bundle_dir, "sources.xml"), problems)
     addons = _load_addons(bundle_dir, problems)
     addon_data = _load_addon_data(bundle_dir, overlay_dir, problems)
+    nodes = _load_nodes(bundle_dir, overlay_dir, problems)
+    rssfeeds = _load_rssfeeds(os.path.join(bundle_dir, "RssFeeds.xml"), problems)
 
     if problems:
         raise ProfileError(problems)
@@ -191,6 +220,8 @@ def load(bundle_dir, device_class, known_ids=None):
         "sources": sources,
         "addons": addons,
         "addon_data": addon_data,
+        "nodes": nodes,
+        "rssfeeds": rssfeeds,
     }
 
 
@@ -344,6 +375,94 @@ def _load_sources(path, problems):
     return entries
 
 
+# A guisettings node path: two or more lowercase element segments, e.g.
+# "general/settinglevel". Deliberately NOT the <setting id> dot namespace -
+# nodes live OUTSIDE the id space, which is the whole reason this class exists.
+_NODE_PATH_RE = re.compile(r"^[a-z][a-z0-9_]*(?:/[a-z][a-z0-9_]*)+$")
+
+
+def _load_nodes(bundle_dir, overlay_dir, problems):
+    """Guisettings FILE NODES (`nodes.d/*.xml`): values Kodi keeps in
+    guisettings.xml OUTSIDE the `<setting id>` space, e.g.
+    `<general><settinglevel>`. Document shape:
+
+        <nodes>
+            <node path="general/settinglevel">3</node>
+        </nodes>
+
+    Same merge rules as the fragments: value from the LAST occurrence,
+    position from the FIRST, overlays win. These are parsed only by this
+    module, never by Kodi, so XML comments are fine here (ElementTree drops
+    them), unlike addon_data payloads."""
+    order = []
+    value = {}
+    for d in (os.path.join(bundle_dir, "nodes.d"),
+              os.path.join(overlay_dir, "nodes.d")):
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            if not name.endswith(".xml"):
+                continue
+            short = name
+            try:
+                root = ET.parse(os.path.join(d, name)).getroot()
+            except Exception as e:
+                problems.append("%s: parse failure: %s" % (short, e))
+                continue
+            if root.tag != "nodes":
+                problems.append(
+                    "%s: root element is <%s>, not <nodes>" % (short, root.tag)
+                )
+                continue
+            for node in root:
+                if node.tag != "node":
+                    problems.append("%s: unexpected <%s>" % (short, node.tag))
+                    continue
+                npath = (node.get("path") or "").strip()
+                text = (node.text or "").strip()
+                if not _NODE_PATH_RE.match(npath):
+                    problems.append("%s: bad node path %r" % (short, npath))
+                    continue
+                if not text:
+                    problems.append("%s: node %s has no value" % (short, npath))
+                    continue
+                if npath not in value:
+                    order.append(npath)
+                value[npath] = text
+    return [(p, value[p]) for p in order]
+
+
+def _load_rssfeeds(path, problems):
+    """The curated RSS feed list, a WHOLE-FILE userdata payload carried
+    verbatim (bytes, so the on-box idempotence compare is exact). Optional:
+    a bundle without one simply plans no rss-feeds op. Validated so a
+    truncated or mangled file fails the load loudly instead of half-writing
+    a feed list Kodi then fails to parse at boot."""
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except Exception as e:
+        problems.append("RssFeeds.xml unreadable: %s" % e)
+        return None
+    try:
+        root = ET.fromstring(raw)
+    except Exception as e:
+        problems.append("RssFeeds.xml: parse failure: %s" % e)
+        return None
+    if root.tag != "rssfeeds":
+        problems.append(
+            "RssFeeds.xml: root element is <%s>, not <rssfeeds>" % root.tag
+        )
+        return None
+    feeds = [n for n in root.iter("feed") if (n.text or "").strip()]
+    if not feeds:
+        problems.append("RssFeeds.xml: no <feed> entries")
+        return None
+    return raw
+
+
 def _load_addons(bundle_dir, problems):
     path = os.path.join(bundle_dir, "addons.list")
     if not os.path.exists(path):
@@ -468,7 +587,11 @@ def plan(bundle):
       3. class D staging, one UpdateLocalAddons, enablement (repo excluded)
       4. class A live sets in fragment order
       5. class A file half: re-materialize, ONE merged write, ONE persist_one
+      5b. guisettings nodes: ARM the shutdown-window write (never a live
+          write - the flush clobbers it; measured 2026-08-30, arm 1)
       6. class C source merge, write and vector gated on `if added or renamed`
+      6b. RssFeeds.xml whole-file write, byte-idempotent (the flush never
+          touches it; measured 2026-08-30)
       7. the T7B repository enable, LAST
     """
     ops = []
@@ -502,8 +625,12 @@ def plan(bundle):
         )
     if bundle["class_a"]:
         ops.append({"kind": "write-guisettings", "values": list(bundle["class_a"])})
+    if bundle["nodes"]:
+        ops.append({"kind": "guisettings-nodes", "nodes": list(bundle["nodes"])})
     if bundle["sources"]:
         ops.append({"kind": "sources", "entries": list(bundle["sources"])})
+    if bundle["rssfeeds"] is not None:
+        ops.append({"kind": "rss-feeds", "xml": bundle["rssfeeds"]})
     for a in last:
         ops.append({"kind": "enable", "addon": a["id"], "last": True})
     return ops
@@ -584,7 +711,9 @@ def apply(ops, on_step=None, log=None):
         "enable": _apply_enable,
         "set": _apply_set,
         "write-guisettings": _apply_write_guisettings,
+        "guisettings-nodes": _apply_guisettings_nodes,
         "sources": _apply_sources,
+        "rss-feeds": _apply_rss_feeds,
     }
     for i, op in enumerate(ops):
         label = _op_label(op)
@@ -618,8 +747,12 @@ def _op_label(op):
         return "UpdateLocalAddons"
     if kind == "write-guisettings":
         return "guisettings.xml file half"
+    if kind == "guisettings-nodes":
+        return "settings level (shutdown-window write)"
     if kind == "sources":
         return "file manager sources"
+    if kind == "rss-feeds":
+        return "RSS feed list"
     return kind
 
 
@@ -933,6 +1066,247 @@ def _apply_write_guisettings(op, ctx):
         "file half wrote %d of %d (live sets stand; the clean-close flush "
         "covers them)" % (wrote, len(op["values"]))
     )
+
+
+def _read_special_bytes(special):
+    """Bytes of a special:// file read through the VFS - on tvOS that is the
+    NSUserDefaults key, the layer Kodi actually reads there (the POSIX copy of
+    a vectored file is deliberately dropped). b'' on any failure."""
+    try:
+        f = xbmcvfs.File(special)
+        try:
+            data = f.readBytes()
+        finally:
+            f.close()
+        return bytes(data) if data else b""
+    except Exception:
+        return b""
+
+
+# --------------------------------------------------------------------------- #
+# Guisettings nodes: the shutdown-window write (module docstring, nodes.d).
+# The marker rides in this add-on's own addon_data like PROFILE_CHECK_MARKER.
+# A backup taken between arm and restart can carry it to another box; that box
+# then converges on the House bundle's value at its next clean shutdown, which
+# is the profile's fleet-wide intent, so the marker is deliberately unstamped.
+# --------------------------------------------------------------------------- #
+def _deferred_nodes_marker_path():
+    return xbmcvfs.translatePath(
+        "special://home/userdata/addon_data/%s/.ezm_guisettings_nodes" % OWN_ID
+    )
+
+
+def mark_deferred_nodes_pending(nodes):
+    """Arm the shutdown-window write. Returns True iff the marker landed;
+    the caller reports False loudly (an unarmed write silently never
+    happens). Never raises."""
+    try:
+        path = _deferred_nodes_marker_path()
+        d = os.path.dirname(path)
+        if not os.path.isdir(d):
+            os.makedirs(d)
+        with open(path, "w") as f:
+            f.write(
+                json.dumps(
+                    {"nodes": [[p, v] for p, v in nodes], "created": time.time()}
+                )
+            )
+        return True
+    except Exception:
+        return False
+
+
+def read_deferred_nodes():
+    """The armed (path, value) pairs, or []. Unreadable means nothing owed."""
+    try:
+        with open(_deferred_nodes_marker_path()) as f:
+            data = json.loads(f.read())
+        return [
+            (str(p), str(v))
+            for p, v in (data.get("nodes") or [])
+            if _NODE_PATH_RE.match(str(p))
+        ]
+    except Exception:
+        return []
+
+
+def deferred_nodes_pending():
+    """True iff a shutdown-window write is still owed. Never raises."""
+    try:
+        return os.path.exists(_deferred_nodes_marker_path())
+    except Exception:
+        return False
+
+
+def clear_deferred_nodes_marker():
+    try:
+        path = _deferred_nodes_marker_path()
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+
+def nodes_current(nodes):
+    """(all_correct, readable) for the node values, read through the VFS.
+    Shared by apply's idempotence check and the boot check, so the two
+    verdicts can never drift."""
+    raw = _read_special_bytes("special://profile/guisettings.xml")
+    if not raw:
+        return False, False
+    try:
+        root = ET.fromstring(raw)
+    except Exception:
+        return False, False
+    for path, want in nodes:
+        node = root.find(path)
+        if node is None or (node.text or "").strip() != str(want):
+            return False, True
+    return True, True
+
+
+def _apply_guisettings_nodes(op, ctx):
+    """ARM the shutdown-window write; never write here. A file write made
+    while Kodi runs is clobbered by the clean-close flush (MEASURED
+    2026-08-30, arm 1: wrote 3, quit, file read 1 - `CViewStateSettings` is
+    an `ISubSettings` serialized from live memory on every save), and E2
+    measured NO live setter of any kind. The write itself happens in
+    `flush_deferred_guisettings_nodes`, called by service.py in its abort
+    window, which the same bench run measured landing AFTER Kodi's one
+    "Saving settings" flush (arm 2) and self-sustaining from then on
+    (arm 3). The boot check verifies the outcome at the next start."""
+    nodes = [(p, v) for p, v in op["nodes"]]
+    correct, _readable = nodes_current(nodes)
+    if correct:
+        # Nothing owed; also disarm a stale marker so the shutdown window
+        # stays a one-stat no-op on every future close.
+        clear_deferred_nodes_marker()
+        return ALREADY, ""
+    if not mark_deferred_nodes_pending(nodes):
+        return ERROR, "could not arm the shutdown-window write"
+    return APPLIED, "lands when Kodi closes; verified by the boot check"
+
+
+def flush_deferred_guisettings_nodes(log=None):
+    """THE SHUTDOWN-WINDOW WRITE. Called by service.py the moment its monitor
+    aborts - which Kodi signals when it stops service add-ons
+    (Application.cpp:1889 at a872eae1a5), AFTER the one "Saving settings"
+    guisettings flush (:1833), inside the 5 s the Python invoker grants an
+    aborted script (PythonInvoker.cpp:62). Measured on the bench 2026-08-30:
+    flush 37.547 s, abort 38.550, this write 38.556, and the value was what
+    the next boot loaded.
+
+    Reads through the VFS (on tvOS the flushed bytes live in the
+    NSUserDefaults key), patches the nodes, writes the POSIX file and vectors
+    it with ONE nsud.persist_one so both tvOS layers agree. The marker is
+    consumed only on a confirmed landing; any failure keeps it armed for the
+    next clean shutdown and says so. Returns True iff nothing is owed
+    anymore. Guarded, never raises - this runs inside Kodi's teardown."""
+    log = log or (
+        lambda msg: xbmc.log(
+            "ezmaintenanceplus: profile: %s" % msg, level=xbmc.LOGINFO
+        )
+    )
+    try:
+        nodes = read_deferred_nodes()
+        if not nodes:
+            return True
+        raw = _read_special_bytes("special://profile/guisettings.xml")
+        if not raw:
+            log("shutdown-window write: guisettings.xml unreadable; marker kept")
+            return False
+        try:
+            root = ET.fromstring(raw)
+        except Exception as e:  # noqa: BLE001 - reported, marker kept
+            log("shutdown-window write: guisettings.xml unparseable (%s); "
+                "marker kept" % e)
+            return False
+        changed = False
+        for path, want in nodes:
+            parent = root
+            segs = path.split("/")
+            for seg in segs[:-1]:
+                nxt = parent.find(seg)
+                if nxt is None:
+                    nxt = ET.SubElement(parent, seg)
+                parent = nxt
+            node = parent.find(segs[-1])
+            if node is None:
+                node = ET.SubElement(parent, segs[-1])
+            if (node.text or "").strip() != str(want):
+                node.text = str(want)
+                changed = True
+        if not changed:
+            # The flushed file already carries every value (e.g. the user set
+            # the level by hand mid-session). Consume without touching any
+            # storage layer - a rewrite here would be a key rewrite plus a
+            # POSIX drop on a run that changed nothing.
+            clear_deferred_nodes_marker()
+            log("shutdown-window write: already correct at the flush; "
+                "nothing written")
+            return True
+        posix = xbmcvfs.translatePath("special://profile/guisettings.xml")
+        try:
+            ET.ElementTree(root).write(
+                posix, encoding="utf-8", xml_declaration=True
+            )
+        except Exception as e:  # noqa: BLE001 - reported, marker kept
+            log("shutdown-window write FAILED (%s); marker kept" % e)
+            return False
+        vectored = nsud.persist_one("guisettings.xml", log=log)
+        if not vectored and _is_tvos():
+            # The key - the layer Kodi reads on tvOS - was not proven to hold
+            # these bytes. The POSIX copy stands, but honesty demands a retry
+            # at the next shutdown rather than a claimed landing.
+            log("shutdown-window write: tvOS vector unconfirmed; marker kept")
+            return False
+        clear_deferred_nodes_marker()
+        log(
+            "shutdown-window write landed: %s"
+            % ", ".join("%s=%s" % (p, v) for p, v in nodes)
+        )
+        return True
+    except Exception as e:  # noqa: BLE001 - never disturb Kodi's teardown
+        try:
+            log("shutdown-window write failed unexpectedly: %s" % e)
+        except Exception:
+            pass
+        return False
+
+
+def rssfeeds_current_md5():
+    """md5 hex of the live RssFeeds.xml read through the VFS, or "" when
+    unreadable. The boot check compares it against the stamp the apply flow
+    recorded, so the verdict is about the exact bytes that will feed the
+    ticker."""
+    raw = _read_special_bytes("special://profile/RssFeeds.xml")
+    if not raw:
+        return ""
+    return hashlib.md5(raw).hexdigest()
+
+
+def _apply_rss_feeds(op, ctx):
+    """The curated feed list, written whole through the ordinary two-layer
+    machinery. Durable in-session: Kodi writes RssFeeds.xml on first run only
+    and the clean-shutdown flush never touches it (MEASURED 2026-08-30: the
+    mid-session write survived two clean quits byte-identical). The feeds
+    load at the next start, same promise as the sources. Byte-idempotent:
+    an equal file reports already-correct and mutates NO storage layer."""
+    want = op["xml"]
+    if isinstance(want, str):
+        want = want.encode("utf-8")
+    if _read_special_bytes("special://profile/RssFeeds.xml") == want:
+        return ALREADY, ""
+    posix = xbmcvfs.translatePath("special://profile/RssFeeds.xml")
+    d = os.path.dirname(posix)
+    if not os.path.isdir(d):
+        os.makedirs(d)
+    with open(posix, "wb") as f:
+        f.write(want)
+    persisted = nsud.persist_one("RssFeeds.xml", log=ctx["log"])
+    if not persisted and _is_tvos():
+        ctx["warnings"].append("RssFeeds.xml: tvOS vector unconfirmed")
+    return APPLIED, "feeds live after Kodi reopens"
 
 
 def _apply_sources(op, ctx):

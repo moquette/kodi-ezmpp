@@ -95,6 +95,13 @@ paragraph is the recorded correction.
 **Decision: class B stays DROPPED.** `90-settinglevel.xml` does not enter the
 bundle.
 
+**SUPERSEDED same day (owner: "I need my expert UI").** E2's finding stands -
+there is still no LIVE path - but the level now ships as a guisettings file
+NODE (`nodes.d/50-settinglevel.xml`) written in the service's abort window,
+AFTER Kodi's one shutdown flush. Mechanism measured in E6 below, shipped in
+2026.08.30.4. E2's "no live setter" measurement is exactly why the write is
+deferred rather than live.
+
 ## E3: the confirmation-gated settings, and there are THREE of them, not one
 
 The plan asked about `addons.unknownsources`. The bench found the same gate on
@@ -249,7 +256,9 @@ then wedged the quit. Three durable fixes came out of it:
   current tree's value, which also equals Kodi 22's measured stock default.
   `bootstrapper/defaults.txt` still says DISABLED; if the owner meant
   disabled, the fix is one value in `settings.d/40-media.xml`.
-- Item 2, class B: stays dropped (E2 found no live path).
+- Item 2, class B: stays dropped (E2 found no live path). SUPERSEDED the same
+  day by the owner's instruction; see the E2 amendment and E6 - the level
+  ships in 2026.08.30.4 as a deferred file node, not a live set.
 - Item 3, class C: ships (E1, all four arms).
 - Item 4: no step swap; the three confirm-gated ids are live-set with the
   bounded self-answer mechanism described above.
@@ -279,3 +288,66 @@ then wedged the quit. Three durable fixes came out of it:
 - `tools/resolve_profile.py` is not built: its only consumer was the launcher
   adapter. The flattening rules live once, in `profile.load()`, as pure
   functions that tests and any future consumer import.
+
+## E6: the settings level DOES ship - the shutdown-window write (2026.08.30.4)
+
+Run the same day, second bench session, after the owner's instruction
+("I need my expert UI") overrode the class B drop. Same Kodi 22.0-BETA1
+(a872eae1a5), a NEW isolated first-run `HOME` under the session scratchpad,
+JSON-RPC over TCP 9090, log read continuously. Every claim MEASURED.
+
+The source read first, at the exact bench commit `a872eae1a5`:
+
+- `xbmc/view/ViewStateSettings.cpp:119-126`: `<general><settinglevel>` is read
+  at settings load; `:173-182`: re-serialized from `m_settingLevel` (live
+  memory) on every save. `xbmc/settings/Settings.cpp:563` registers
+  `CViewStateSettings` as an `ISubSettings`, so every guisettings save
+  rewrites the node from memory.
+- `xbmc/application/Application.cpp:1833`: the one "Saving settings" flush in
+  `Stop()`. `:1850` sets `m_bStop`; `:1889` stops service add-ons ("Stop
+  services before unloading Python"); `:1892` stops remaining scripts. So a
+  Python service's abort fires AFTER the flush.
+- `xbmc/interfaces/python/PythonInvoker.cpp:62`: `PYTHON_SCRIPT_TIMEOUT`
+  5000 ms - the grace an aborted script gets before the force-stop.
+- `xbmc/settings/SettingsComponent.cpp:372-393`: `Deinitialize()` calls
+  `Unload()`/`Uninitialize()`, never `Save()` - no second flush after the
+  scripts die.
+
+The three arms:
+
+1. **A file write while Kodi runs is CLOBBERED.** Patched
+   `<general><settinglevel>` from 1 to 3 in the running profile's
+   guisettings.xml, clean `Application.Quit` ("Saving settings" logged once):
+   file read 1 after exit. In the same arm, `RssFeeds.xml` replaced
+   mid-session with the owner's curated list (md5 `49be4fb0...`) SURVIVED the
+   same quit byte-identical - the flush never touches it, which is the whole
+   mechanism basis for the bundle's RssFeeds payload.
+2. **The abort-window write LANDS.** A 30-line trial service
+   (`service.ezmtrial`: `waitForAbort()`, then patch the node) staged,
+   enabled, clean quit. Log ordering: "Saving settings" 19:21:37.547, trial
+   "abort seen" 19:21:38.550, "wrote settinglevel=3" 19:21:38.556 - 1.0 s
+   after the flush, 6 ms to write, well inside the 5 s grace. File read 3
+   after exit.
+3. **Loaded and self-sustaining.** Relaunch: the System Settings window's
+   level button (`Control.GetLabel(20)` over JSON-RPC with the window active)
+   read "Expert ( )". A further clean quit with nothing armed re-serialized 3
+   from memory - from the first post-landing boot onward the flush itself
+   maintains the value and the shutdown window is a one-stat no-op. Zero
+   error lines in the bench log across all three arms.
+
+**Decision, shipped in 2026.08.30.4:** `nodes.d/50-settinglevel.xml` carries
+`general/settinglevel = 3` for every device class. `apply()` only ARMS a
+marker (a live write would be arm 1); `profile.flush_deferred_guisettings_nodes`,
+called by `service.py` the moment its monitor aborts, patches the flushed file
+through the VFS and lands it with ONE `nsud.persist_one` so both tvOS layers
+agree; the boot check verifies at the next start (still-armed reads as OWED,
+silent - the write simply has not had its window). The re-run while the write
+is pending deliberately reports `applied`, not `already-correct`: the level is
+genuinely not live yet and the restart offer must repeat; the post-landing
+run is the true `already-correct` fixed point.
+
+One honest caveat: the abort-window ordering is proven on the macOS bench and
+from the shared `CApplication::Stop()` source path; it is NOT hardware-proven
+on tvOS or Fire OS in this session (the boxes were deliberately untouched).
+The boot check reports per box, so a platform that ever behaves differently
+says so on its first restart rather than staying silent.

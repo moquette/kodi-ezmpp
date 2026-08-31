@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<rssfeeds>
+  <!--RSS feeds. To have multiple feeds, just add a feed to the set. You can also have multiple sets.-->
+  <!--To use different sets in your skin, each must be called from skin with a unique id.-->
+  <set id="1">
+    <feed updateinterval="30">https://www.dailysignal.com/feed/</feed>
+    <feed updateinterval="30">https://moxie.foxnews.com/google-publisher/latest.xml</feed>
+    <feed updateinterval="30">https://www.newsmax.com/rss/Newsfront/16</feed>
+    <feed updateinterval="30">https://www.sherdog.com/rss/news2.xml</feed>
+    <feed updateinterval="30">http://feeds.arstechnica.com/arstechnica/index/</feed>
+    <feed updateinterval="30">http://feeds.kodi.tv/xbmc</feed>
+    <feed updateinterval="30">http://feeds.kodi.tv/latest_xbmc_addons</feed>
+    <feed updateinterval="30">http://feeds.kodi.tv/updated_xbmc_addons</feed>
+  </set>
+</rssfeeds>
