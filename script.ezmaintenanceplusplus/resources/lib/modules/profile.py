@@ -74,6 +74,19 @@ code, so they are not re-derived:
   in-session write through the ordinary two-layer machinery is durable and the
   feeds load at the next start. Byte-idempotent: an equal file is
   already-correct and touches no storage layer (the 4.3 argument).
+* **Skin bools (``skinsettings.xml``) are live sets on the ACTIVE skin** via
+  the two-argument ``Skin.SetBool``, persisted by the clean-shutdown flush -
+  the ``wiz._apply_skin_settings`` mechanism (defect A's in-memory half),
+  because a write into ``addon_data/<skin>/settings.xml`` is serialized over
+  from live memory by that very flush. The in-flow probe ``Skin.HasSetting``
+  MUTATES (TranslateBool inserts default-false and schedules a save), so it is
+  used only where a set immediately follows a wrong answer, and the boot check
+  never reads skin settings at all.
+* **Third-party addon_data is values-idempotent, checked BEFORE the enabled
+  guard**: the owner add-on's own runs rewrite its file with defaults filled
+  in, so a byte compare is false forever while every bundle value stands; and
+  on a re-run the owner IS enabled (step 3 of the same flow enabled it), so an
+  enabled-first guard would misreport the converged state as refused.
 * ``load()`` and ``plan()`` are PURE functions of the bundle directory and the
   injected device class / catalog: no Kodi reads inside, so the most valuable
   unit tests exist (plan 7.3). ``xbmcgui`` is never imported here; progress
@@ -208,6 +221,9 @@ def load(bundle_dir, device_class, known_ids=None):
     addon_data = _load_addon_data(bundle_dir, overlay_dir, problems)
     nodes = _load_nodes(bundle_dir, overlay_dir, problems)
     rssfeeds = _load_rssfeeds(os.path.join(bundle_dir, "RssFeeds.xml"), problems)
+    skin_bools = _load_skin_settings(
+        os.path.join(bundle_dir, "skinsettings.xml"), problems
+    )
 
     if problems:
         raise ProfileError(problems)
@@ -222,6 +238,7 @@ def load(bundle_dir, device_class, known_ids=None):
         "addon_data": addon_data,
         "nodes": nodes,
         "rssfeeds": rssfeeds,
+        "skin_bools": skin_bools,
     }
 
 
@@ -463,6 +480,65 @@ def _load_rssfeeds(path, problems):
     return raw
 
 
+# A skin setting id is interpolated into a Kodi builtin, where
+# CUtil::SplitParams treats "(" and '"' as structure - the same reason
+# wiz._SAFE_SETTING_ID exists. Bundle ids are ours, but the guard costs
+# nothing and keeps an unsafe builtin unemittable from here too.
+_SAFE_SKIN_SETTING_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _load_skin_settings(path, problems):
+    """SKIN bools (`skinsettings.xml`): settings of the LIVE skin, set via
+    `Skin.SetBool` and persisted by the clean-shutdown flush - the
+    wiz._apply_skin_settings mechanism (defect A's fix), because a file write
+    into addon_data/<skin>/ would be serialized over from live memory by that
+    very flush. Optional; parsed only by this module, so comments are fine
+    (ElementTree drops them). Bools only, and loudly so: a string payload
+    needs Skin.SetString plus the builtin-quoting guard, and gets built the
+    day a payload exists rather than shipped untested."""
+    if not os.path.exists(path):
+        return []
+    try:
+        root = ET.parse(path).getroot()
+    except Exception as e:
+        problems.append("skinsettings.xml: parse failure: %s" % e)
+        return []
+    if root.tag != "settings":
+        problems.append(
+            "skinsettings.xml: root element is <%s>, not <settings>" % root.tag
+        )
+        return []
+    out = []
+    seen = set()
+    for node in root:
+        if node.tag != "setting":
+            problems.append("skinsettings.xml: unexpected <%s>" % node.tag)
+            continue
+        sid = (node.get("id") or "").strip()
+        stype = (node.get("type") or "").strip()
+        text = (node.text or "").strip()
+        if not sid or not _SAFE_SKIN_SETTING_ID.match(sid):
+            problems.append("skinsettings.xml: bad setting id %r" % sid)
+            continue
+        if stype != "bool":
+            problems.append(
+                "skinsettings.xml: %s has type %r; only bool is supported"
+                % (sid, stype)
+            )
+            continue
+        if text not in ("true", "false"):
+            problems.append(
+                "skinsettings.xml: %s value %r is not true/false" % (sid, text)
+            )
+            continue
+        if sid in seen:
+            problems.append("skinsettings.xml: duplicate id %s" % sid)
+            continue
+        seen.add(sid)
+        out.append((sid, text))
+    return out
+
+
 def _load_addons(bundle_dir, problems):
     path = os.path.join(bundle_dir, "addons.list")
     if not os.path.exists(path):
@@ -587,12 +663,21 @@ def plan(bundle):
       3. class D staging, one UpdateLocalAddons, enablement (repo excluded)
       4. class A live sets in fragment order
       5. class A file half: re-materialize, ONE merged write, ONE persist_one
+      5c. skin bools live-set on the ACTIVE skin (the _apply_skin_settings
+          mechanism: the clean-shutdown flush persists live memory, so the
+          live set is the only write that survives)
       5b. guisettings nodes: ARM the shutdown-window write (never a live
           write - the flush clobbers it; measured 2026-08-30, arm 1)
       6. class C source merge, write and vector gated on `if added or renamed`
       6b. RssFeeds.xml whole-file write, byte-idempotent (the flush never
           touches it; measured 2026-08-30)
       7. the T7B repository enable, LAST
+
+    Step 2 before step 3 and step 3 before step 4 are both load-bearing for
+    the weather payload: the location file must be on disk before weather.multi
+    is ever enabled (or its live settings flush over it - defect A's shape),
+    and weather.multi must be enabled before the `weather.addon` set runs,
+    because Kodi validates an addon-type setting against its enabled add-ons.
     """
     ops = []
     own = bundle["addon_data"].get(OWN_ID, {})
@@ -603,12 +688,17 @@ def plan(bundle):
         if aid == OWN_ID:
             continue
         for fname in sorted(bundle["addon_data"][aid]):
+            doc = bundle["addon_data"][aid][fname]
             ops.append(
                 {
                     "kind": "addon-data",
                     "addon": aid,
                     "rel": fname,
-                    "xml": bundle["addon_data"][aid][fname]["xml"],
+                    "xml": doc["xml"],
+                    # the values-level idempotence compare: once the owner
+                    # add-on runs, Kodi rewrites its file with every default
+                    # filled in, so byte equality is false forever after
+                    "pairs": list(doc["pairs"]),
                 }
             )
     normal = [a for a in bundle["addons"] if a["mode"] == "normal"]
@@ -625,6 +715,8 @@ def plan(bundle):
         )
     if bundle["class_a"]:
         ops.append({"kind": "write-guisettings", "values": list(bundle["class_a"])})
+    for sid, text in bundle["skin_bools"]:
+        ops.append({"kind": "skin-bool", "id": sid, "value": text})
     if bundle["nodes"]:
         ops.append({"kind": "guisettings-nodes", "nodes": list(bundle["nodes"])})
     if bundle["sources"]:
@@ -711,6 +803,7 @@ def apply(ops, on_step=None, log=None):
         "enable": _apply_enable,
         "set": _apply_set,
         "write-guisettings": _apply_write_guisettings,
+        "skin-bool": _apply_skin_bool,
         "guisettings-nodes": _apply_guisettings_nodes,
         "sources": _apply_sources,
         "rss-feeds": _apply_rss_feeds,
@@ -747,6 +840,8 @@ def _op_label(op):
         return "UpdateLocalAddons"
     if kind == "write-guisettings":
         return "guisettings.xml file half"
+    if kind == "skin-bool":
+        return "skin setting %s" % op["id"]
     if kind == "guisettings-nodes":
         return "settings level (shutdown-window write)"
     if kind == "sources":
@@ -770,14 +865,46 @@ def _apply_own_setting(op, ctx):
     return REFUSED, "setSetting read-back mismatch"
 
 
+def _addon_data_current(rel, pairs):
+    """True iff the LIVE file (read through the VFS - on tvOS that is the
+    NSUserDefaults key, the layer Kodi actually reads) already carries every
+    bundle (id, value) pair. Values-level, not bytes: once the owner add-on
+    has run, Kodi rewrites its settings.xml with every default filled in, so
+    byte equality is false forever while the values stand correct."""
+    if not pairs:
+        return False
+    raw = _read_special_bytes("special://profile/" + rel)
+    if not raw:
+        return False
+    try:
+        root = ET.fromstring(raw)
+    except Exception:
+        return False
+    live = {}
+    for node in root.iter("setting"):
+        sid = node.get("id")
+        if sid:
+            live[sid] = (node.text or "").strip()
+    return all(live.get(sid) == text for sid, text in pairs)
+
+
 def _apply_addon_data(op, ctx):
     """Write a third-party add-on's settings file BEFORE that add-on is ever
-    enabled. If it is ALREADY enabled, Kodi holds its settings in memory and
-    flushes them over the file at the clean shutdown the flow's restart
-    triggers, so silently writing anyway would be restore defect A with a new
-    owner. The bounded disable/re-enable alternative is owner-gated (plan open
-    item 6), so until he sanctions it this leaf reports honestly instead."""
+    enabled. The idempotence compare runs FIRST, against the values: a file
+    already carrying every bundle pair is already-correct and touches no
+    storage layer, whether or not the owner is enabled - which is exactly the
+    re-run state, since step 3 of the same flow enables the owner. Only a file
+    that actually NEEDS the write hits the enabled guard: if the owner is
+    ALREADY enabled and holds different values, Kodi has those values in
+    memory and flushes them over any write at the clean shutdown the flow's
+    restart triggers, so silently writing anyway would be restore defect A
+    with a new owner. The bounded disable/re-enable alternative is owner-gated
+    (plan open item 6), so until he sanctions it this leaf reports honestly
+    instead."""
     aid = op["addon"]
+    if _addon_data_current("addon_data/%s/%s" % (aid, op["rel"]),
+                          op.get("pairs") or []):
+        return ALREADY, ""
     try:
         resp = _rpc(
             "Addons.GetAddonDetails", {"addonid": aid, "properties": ["enabled"]}
@@ -1066,6 +1193,46 @@ def _apply_write_guisettings(op, ctx):
         "file half wrote %d of %d (live sets stand; the clean-close flush "
         "covers them)" % (wrote, len(op["values"]))
     )
+
+
+def _skin_bool_is_set(sid):
+    """The live skin's value for a skin BOOL, via Skin.HasSetting. NOT a
+    read-only probe - CSkinInfo::TranslateBool INSERTS a default-false bool
+    for an unseen id and schedules a save (the wiz._apply_skin_settings
+    docstring's warning, and why the boot check never touches skin settings).
+    Acceptable HERE and only here: every probe is immediately followed by a
+    set whenever the answer is not the bundle's value, so the inserted
+    default is overwritten in the same breath and a true answer inserted
+    nothing."""
+    return bool(xbmc.getCondVisibility("Skin.HasSetting(%s)" % sid))
+
+
+def _apply_skin_bool(op, ctx):
+    """Set a skin bool on whichever skin is LIVE, via the two-argument
+    Skin.SetBool builtin - the wiz._apply_skin_settings mechanism (defect A's
+    in-memory half): the profile runs in-process and the flow ends in a
+    restart offer, so the clean-shutdown flush serializes the live value into
+    addon_data/<skin>/settings.xml. A file write instead would be clobbered
+    by that same flush. Applies to stock Estuary today and Estuary POV after
+    the owner installs it (same setting id, measured); a box that switches
+    skins re-runs the profile, additively. The loader admits only ids
+    matching _SAFE_SKIN_SETTING_ID, so the builtin interpolation is safe."""
+    sid, want = op["id"], op["value"] == "true"
+    try:
+        skin = (xbmc.getSkinDir() or "").strip()
+    except Exception:
+        skin = ""
+    if not skin:
+        # No live skin session to set it in: report honestly, never guess.
+        return REFUSED, "no live skin session"
+    if _skin_bool_is_set(sid) == want:
+        return ALREADY, ""
+    xbmc.executebuiltin(
+        "Skin.SetBool(%s,%s)" % (sid, "true" if want else "false"), True
+    )
+    if _skin_bool_is_set(sid) == want:
+        return APPLIED, "on %s; the clean-shutdown flush persists it" % skin
+    return REFUSED, "read-back on %s does not hold the value" % skin
 
 
 def _read_special_bytes(special):
@@ -1428,6 +1595,21 @@ def verify(ops):
                     "label": op["addon"],
                     "outcome": APPLIED if enabled else REFUSED,
                     "detail": "" if enabled else "not enabled",
+                }
+            )
+        elif op["kind"] == "skin-bool":
+            # In-flow only, and only here: the probe MUTATES (TranslateBool
+            # inserts default-false for an unseen id), which is exactly why the
+            # boot check never reads skin settings. Right after apply the id
+            # exists, so this read inserts nothing.
+            want = op["value"] == "true"
+            live = _skin_bool_is_set(op["id"])
+            out.append(
+                {
+                    "kind": "verify-skin-bool",
+                    "label": op["id"],
+                    "outcome": APPLIED if live == want else REFUSED,
+                    "detail": "" if live == want else "live skin holds %r" % live,
                 }
             )
     return out

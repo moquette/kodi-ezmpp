@@ -1,0 +1,24 @@
+<settings version="2">
+    <!-- The weather provider. ORDER IS LOAD-BEARING across CLASSES, not just
+         within this fragment: Kodi validates an addon-type setting against
+         its installed, enabled add-ons and rejects an id it does not know, so
+         this set only works because the plan enables every class D add-on
+         (weather.multi among them) BEFORE any class A set runs (plan 7.4
+         steps 3 then 4). weather.multi ships in this bundle's addons/ with
+         its four pure-python deps; its remaining deps resolve on every box
+         (script.module.pil is bundled inside each platform's Kodi build -
+         measured in Kodi.app 22.0b1, and absent from ts1's userdata addons
+         after a real install - and script.module.requests is this add-on's
+         own hard dependency, so it exists wherever this profile can run).
+
+         Value measured off the owner's hand-set ts1, 2026-08-31. The location
+         itself is addon data, not a core id: addon_data/weather.multi/
+         settings.xml in this bundle.
+
+         Apple TV note, not a gate: on tvOS Multi Weather only RUNS because
+         service.tvos.pythonfix shims the _scproxy module Kodi's tvOS build
+         dropped (anything touching urllib dies at import without it). The
+         install and this provider set are correct regardless; the fix add-on
+         is user-installed per that add-on's own contract. -->
+    <setting id="weather.addon">weather.multi</setting>
+</settings>

@@ -3721,6 +3721,17 @@ def test_no_test_probes_skin_settings_via_the_mutating_api(wiz):
         needles = ("Skin." + "HasSetting", "GetInfo" + "Booleans")
         if any(n in t for n in needles):
             hits.append(p.name)
+    # ONE sanctioned exception (2026.08.31.3): test_settings_profile.py MODELS
+    # the mutation itself - its FakeKodi skin-probe branch INSERTS the
+    # default-false bool exactly as CSkinInfo::TranslateBool does - so a test
+    # run against that fake CANNOT mistake the probe for a read-only one; the
+    # mutation this guard exists to keep visible is what the fake makes
+    # visible. The file also exercises the one shipped caller that uses the
+    # probe deliberately and safely (profile._skin_bool_is_set: a set
+    # immediately follows every wrong answer, so the inserted default is
+    # overwritten in the same breath). The guard stands for everything else,
+    # the boot check above all.
+    hits = [h for h in hits if h != "test_settings_profile.py"]
     assert not hits, "mutating skin-setting probe used in: %s" % sorted(set(hits))
 
 

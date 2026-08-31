@@ -1,3 +1,17 @@
+v2026.08.31.3
+- Multi Weather with the house location is set up automatically; the top bar
+  shows the weather. The Settings Profile now installs the Multi Weather add-on
+  together with the pieces it needs, makes it the box's weather provider, fills
+  in the house location (Sacramento, CA), and switches on the weather in the
+  top bar of the home screen - so a fresh box shows the weather with nothing to
+  set up by hand. The top-bar switch is set on whichever skin the box is using
+  when the profile runs; if you change skins later, run the profile again and
+  it is set on the new skin too. On Apple TV the weather also needs the tvOS
+  Python Fix add-on from the repository, as before; with it in place the
+  weather works there exactly as on the Fire TVs. Run the profile again any
+  time, as always: a box that already has the weather simply reports that
+  nothing needed changing, and nothing is ever removed.
+
 v2026.08.31.2
 - Backups now carry the box's name in the filename: a backup made on ts1 is
   offered as ts1_kodi_backup_202608310512.zip instead of kodi_backup_202608310512.zip, so a

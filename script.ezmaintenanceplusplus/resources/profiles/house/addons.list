@@ -11,3 +11,31 @@
 # let Kodi update EZ Maintenance++ while EZ Maintenance++ is mid-apply.
 script.image.resource.select|addons/script.image.resource.select-3.0.2.zip|normal
 repository.tony7bones|addons/repository.tony7bones-3.0.0.zip|last
+#
+# The weather stack (owner's hand-set ts1, measured 2026-08-31): Multi Weather
+# plus every dependency the official Piers repo can actually deliver, in
+# dependency order so each enable finds its parents already enabled. The zips
+# are byte-identical official mirrors.kodi.tv artifacts (sha256 verified
+# against the mirror's own .sha256 sidecars at authoring time, 2026-08-31):
+#   script.module.six-1.16.0+matrix.1     15fa60d61fb067d4e81233109fc28c02310e3374798b2a88d9f399abf22958ef
+#   script.module.soupsieve-2.4.1         043395a24acc40412e615552f12aaf041c8a7cd78c3209e42949addbddf1b114
+#   script.module.dateutil-2.8.2          cc17745aa3e37ebd6709ab1042ee43405c992402b5f1d67eea260a99f51a9360
+#   script.module.beautifulsoup4-4.12.2   d6ec47f6cd94b5191f501882be2a670a35e41dadeb07fa32bdf9bb8c3fe63a2f
+#   script.openweathermap.maps-1.0.6      137569ea1632edeb009587176846f6aa23243c81a078c8fc2bc1d92213cdea50
+#   weather.multi-1.1.6                   1ba06630390e8ea10127eea01a49d42ecb1969b40cf8b7905d28737ea4b5c0d8
+# Two dependencies are deliberately NOT bundled: script.module.pil is compiled
+# per platform and ships INSIDE every Kodi build (present in Kodi.app 22.0b1's
+# system addons; absent from the official index and from ts1's userdata after
+# a real install), and script.module.requests is this add-on's own declared
+# dependency, so it is installed wherever this profile can run. Updates still
+# flow: these are the official versions, so the official repo upgrades them
+# exactly as if Kodi had installed them itself.
+# Apple TV: Multi Weather RUNS there only because service.tvos.pythonfix shims
+# the _scproxy module Kodi's tvOS build dropped. Not gated on here - the
+# install is correct either way and that add-on is user-installed by design.
+script.module.six|addons/script.module.six-1.16.0+matrix.1.zip|normal
+script.module.soupsieve|addons/script.module.soupsieve-2.4.1.zip|normal
+script.module.dateutil|addons/script.module.dateutil-2.8.2.zip|normal
+script.module.beautifulsoup4|addons/script.module.beautifulsoup4-4.12.2.zip|normal
+script.openweathermap.maps|addons/script.openweathermap.maps-1.0.6.zip|normal
+weather.multi|addons/weather.multi-1.1.6.zip|normal

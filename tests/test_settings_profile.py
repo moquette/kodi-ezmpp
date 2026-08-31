@@ -73,6 +73,7 @@ def _import_profile(monkeypatch, xbmc_mod=None, xbmcvfs_mod=None, addon_settings
         xbmc_mod.sleep = lambda ms: None
         xbmc_mod.getInfoLabel = lambda label: ""
         xbmc_mod.getLocalizedString = lambda sid: ""
+        xbmc_mod.getSkinDir = lambda: ""
         xbmc_mod.LOGDEBUG = 0
         xbmc_mod.LOGINFO = 1
         xbmc_mod.LOGWARNING = 2
@@ -163,15 +164,22 @@ def test_house_bundle_loads_for_every_device_class(monkeypatch):
     for cls in ("fireos", "tvos", "bench"):
         bundle = profile.load(str(HOUSE), cls)
         assert bundle["device_class"] == cls
-        assert len(bundle["class_a"]) == 17, (
-            "the House bundle carries 17 class A ids (13 from the plan, the "
-            "three added to bootstrapper after 2026-08-04, plus the "
-            "filecache.memorysize convergence pin added 2026-08-30)"
+        assert len(bundle["class_a"]) == 18, (
+            "the House bundle carries 18 class A ids (13 from the plan, the "
+            "three added to bootstrapper after 2026-08-04, the "
+            "filecache.memorysize convergence pin added 2026-08-30, plus "
+            "weather.addon added 2026-08-31)"
         )
         assert len(bundle["sources"]) == 3
         assert {a["id"] for a in bundle["addons"]} == {
             "repository.tony7bones",
             "script.image.resource.select",
+            "script.module.six",
+            "script.module.soupsieve",
+            "script.module.dateutil",
+            "script.module.beautifulsoup4",
+            "script.openweathermap.maps",
+            "weather.multi",
         }
 
 
@@ -184,7 +192,7 @@ def test_house_bundle_passes_the_authoring_catalog_gate(monkeypatch):
     profile = _import_profile(monkeypatch)
     for cls in ("fireos", "tvos", "bench"):
         bundle = profile.load(str(HOUSE), cls, known_ids=_catalog())
-        assert len(bundle["class_a"]) == 17, cls
+        assert len(bundle["class_a"]) == 18, cls
 
 
 def test_house_overlays_differ_per_class_and_bench_is_deliberate(monkeypatch):
@@ -472,12 +480,45 @@ def test_plan_order_matches_7_4(monkeypatch):
     assert ops[-1]["addon"] == "repository.tony7bones"
     assert ops[-1]["last"] is True
     # ordering indexes
-    idx = {k: kinds.index(k) for k in ("stage", "refresh", "enable", "set",
-                                       "write-guisettings", "guisettings-nodes",
+    idx = {k: kinds.index(k) for k in ("addon-data", "stage", "refresh",
+                                       "enable", "set", "write-guisettings",
+                                       "skin-bool", "guisettings-nodes",
                                        "sources", "rss-feeds")}
+    assert idx["addon-data"] < idx["stage"], (
+        "the weather location file must be on disk before weather.multi is "
+        "ever known to Kodi (an enabled owner's live settings flush over the "
+        "file at shutdown - defect A's shape)"
+    )
     assert idx["stage"] < idx["refresh"] < idx["enable"] < idx["set"]
-    assert idx["set"] < idx["write-guisettings"] < idx["guisettings-nodes"]
+    assert idx["set"] < idx["write-guisettings"] < idx["skin-bool"]
+    assert idx["skin-bool"] < idx["guisettings-nodes"]
     assert idx["guisettings-nodes"] < idx["sources"] < idx["rss-feeds"]
+    # parent before dependent ACROSS classes: weather.multi must be enabled
+    # before the weather.addon set, or Kodi rejects the provider id (the
+    # addon-type setting validates against enabled add-ons)
+    enable_weather = next(
+        i for i, op in enumerate(ops)
+        if op["kind"] == "enable" and op["addon"] == "weather.multi"
+    )
+    set_provider = next(
+        i for i, op in enumerate(ops)
+        if op["kind"] == "set" and op["id"] == "weather.addon"
+    )
+    assert enable_weather < set_provider, (
+        "weather.multi must be enabled before weather.addon is set"
+    )
+    # and its four bundled pure-python deps enable before weather.multi itself
+    enables = [op["addon"] for op in ops if op["kind"] == "enable"]
+    for dep in ("script.module.six", "script.module.soupsieve",
+                "script.module.dateutil", "script.module.beautifulsoup4",
+                "script.openweathermap.maps"):
+        assert enables.index(dep) < enables.index("weather.multi"), dep
+    # the addon-data op carries the pairs the values-idempotence compare needs
+    weather_data = next(
+        op for op in ops
+        if op["kind"] == "addon-data" and op["addon"] == "weather.multi"
+    )
+    assert weather_data["pairs"], "addon-data ops must carry their pairs"
     # class A order follows the fragments; the sets carry the confirm flag for
     # exactly the three measured confirm-gated ids
     confirm = {op["id"] for op in ops if op["kind"] == "set" and op["confirm"]}
@@ -526,6 +567,12 @@ class FakeKodi:
         self.focus = "10"
         self.events = []
         self.builtins = []
+        # The live skin surface. skin_bools models CSkinSettings; the
+        # Skin.HasSetting probe below reproduces TranslateBool's measured
+        # MUTATION (an unseen id is inserted default-false), so a test can
+        # never mistake the probe for a read-only one.
+        self.skin = "skin.estuary"
+        self.skin_bools = {}
 
     # ---- xbmc surface ----------------------------------------------------- #
     def executeJSONRPC(self, raw):
@@ -590,9 +637,13 @@ class FakeKodi:
             return json.dumps({"error": {"code": -32602}})
         return json.dumps({"result": {}})
 
-    def executebuiltin(self, cmd):
+    def executebuiltin(self, cmd, wait=False):
         self.builtins.append(cmd)
-        if cmd == "UpdateLocalAddons":
+        if cmd.startswith("Skin.SetBool("):
+            inner = cmd[len("Skin.SetBool("):-1]
+            sid, _, val = inner.partition(",")
+            self.skin_bools[sid.strip()] = val.strip() == "true"
+        elif cmd == "UpdateLocalAddons":
             if self.addons_home.is_dir():
                 for d in self.addons_home.iterdir():
                     if (d / "addon.xml").exists() and d.name not in self.addons:
@@ -613,6 +664,13 @@ class FakeKodi:
                 self.dialog["event"].set()
 
     def getCondVisibility(self, cond):
+        if cond.startswith("Skin.HasSetting("):
+            sid = cond[len("Skin.HasSetting("):-1].strip()
+            # TranslateBool's measured side effect: probing an unseen id
+            # INSERTS it, default false, and schedules a save.
+            if sid not in self.skin_bools:
+                self.skin_bools[sid] = False
+            return self.skin_bools[sid]
         if cond == "Window.IsActive(yesnodialog)":
             return self.dialog is not None and self.dialog.get("type") == "yesno"
         if cond == "Window.IsActive(okdialog)":
@@ -651,6 +709,9 @@ _SEED_SETTINGS = {
     "locale.audiolanguage": "mediadefault",
     "locale.subtitlelanguage": "forced_only",
     "lookandfeel.enablerssfeeds": False,
+    # A fresh box has no weather provider (guisettings carries the id at its
+    # empty default - measured in the ts1 before capture, 2026-08-31).
+    "weather.addon": "",
     # A drifted box (the atv1 archive carried 64): the convergence pin must
     # actually move it to 20, not find it already there.
     "filecache.memorysize": 64,
@@ -701,6 +762,7 @@ def _rig(monkeypatch, tmp_path, platform="tvos", answer_dialogs=True):
     xbmc_mod.executebuiltin = kodi.executebuiltin
     xbmc_mod.getInfoLabel = kodi.getInfoLabel
     xbmc_mod.getLocalizedString = kodi.getLocalizedString
+    xbmc_mod.getSkinDir = lambda: kodi.skin
     xbmc_mod.sleep = lambda ms: None
 
     xbmcvfs_mod = types.ModuleType("xbmcvfs")
@@ -833,10 +895,34 @@ def test_apply_lands_every_class_a_id_with_exactly_one_vector(
     # class D: staged, enabled, repo enable is the LAST enable event
     assert rig.kodi.addons["script.image.resource.select"] is True
     assert rig.kodi.addons["repository.tony7bones"] is True
+    for aid in ("script.module.six", "script.module.soupsieve",
+                "script.module.dateutil", "script.module.beautifulsoup4",
+                "script.openweathermap.maps", "weather.multi"):
+        assert rig.kodi.addons[aid] is True, "%s not enabled" % aid
     enables = [e for e in rig.kodi.events if e[0] == "enable"]
     assert enables[-1] == ("enable", "repository.tony7bones"), (
         "the T7B repository must be enabled LAST (plan 4.4)"
     )
+
+    # the weather payload: provider live, location file on the layer Kodi
+    # reads with the ts1-measured values, skin toggle set on the live skin
+    assert rig.settings["weather.addon"] == "weather.multi"
+    wraw = bytes(
+        rig.store.vfs_read("special://profile/addon_data/weather.multi/settings.xml")
+    )
+    wvals = {
+        n.get("id"): (n.text or "")
+        for n in ET.fromstring(wraw).iter("setting")
+    }
+    assert wvals == {
+        "loc1_name": "Sacramento, CA, US",
+        "loc1_url": "us/ca/sacramento",
+        "loc1_lat": "38.675",
+        "loc1_lon": "-121.525",
+        "loc1_id": "12798021",
+    }
+    assert rig.vectors.count("addon_data/weather.multi/settings.xml") == 1
+    assert rig.kodi.skin_bools.get("show_weatherinfo") is True
 
     # own settings via setSetting only
     assert rig.own_settings["download.path"].endswith("/tvos/")
@@ -1057,11 +1143,194 @@ def test_house_zip_payloads_are_wellformed():
     for aid, zname in (
         ("repository.tony7bones", "repository.tony7bones-3.0.0.zip"),
         ("script.image.resource.select", "script.image.resource.select-3.0.2.zip"),
+        ("script.module.six", "script.module.six-1.16.0+matrix.1.zip"),
+        ("script.module.soupsieve", "script.module.soupsieve-2.4.1.zip"),
+        ("script.module.dateutil", "script.module.dateutil-2.8.2.zip"),
+        ("script.module.beautifulsoup4",
+         "script.module.beautifulsoup4-4.12.2.zip"),
+        ("script.openweathermap.maps", "script.openweathermap.maps-1.0.6.zip"),
+        ("weather.multi", "weather.multi-1.1.6.zip"),
     ):
         with zipfile.ZipFile(HOUSE / "addons" / zname) as z:
             names = z.namelist()
         assert all(n.startswith(aid + "/") for n in names)
         assert (aid + "/addon.xml") in names
+
+
+# The six weather-stack zips, pinned to the official mirrors.kodi.tv sha256
+# sidecars fetched at authoring time (2026-08-31). "Byte-identical official
+# artifact" is a claim; this makes a silent re-copy or corruption fail in CI,
+# the same argument as HOUSE_RSS_MD5.
+WEATHER_ZIP_SHA256 = {
+    "script.module.six-1.16.0+matrix.1.zip":
+        "15fa60d61fb067d4e81233109fc28c02310e3374798b2a88d9f399abf22958ef",
+    "script.module.soupsieve-2.4.1.zip":
+        "043395a24acc40412e615552f12aaf041c8a7cd78c3209e42949addbddf1b114",
+    "script.module.dateutil-2.8.2.zip":
+        "cc17745aa3e37ebd6709ab1042ee43405c992402b5f1d67eea260a99f51a9360",
+    "script.module.beautifulsoup4-4.12.2.zip":
+        "d6ec47f6cd94b5191f501882be2a670a35e41dadeb07fa32bdf9bb8c3fe63a2f",
+    "script.openweathermap.maps-1.0.6.zip":
+        "137569ea1632edeb009587176846f6aa23243c81a078c8fc2bc1d92213cdea50",
+    "weather.multi-1.1.6.zip":
+        "1ba06630390e8ea10127eea01a49d42ecb1969b40cf8b7905d28737ea4b5c0d8",
+}
+
+
+def test_house_weather_zips_are_the_official_artifacts():
+    import hashlib
+
+    for zname, want in WEATHER_ZIP_SHA256.items():
+        raw = (HOUSE / "addons" / zname).read_bytes()
+        assert hashlib.sha256(raw).hexdigest() == want, zname
+
+
+def test_house_weather_payload(monkeypatch):
+    """The 2026-08-31 weather addition, measured off the owner's hand-set ts1:
+    weather.multi staged with its four bundled pure-python deps plus the maps
+    dependency (all normal mode, deps listed before their dependents), the
+    provider id as the LAST class A entry, the complete loc1 block as
+    addon_data, and the top-bar toggle as a skin bool - on every device
+    class, no overlay split."""
+    profile = _import_profile(monkeypatch)
+    for cls in ("fireos", "tvos", "bench"):
+        bundle = profile.load(str(HOUSE), cls)
+        values = dict(bundle["class_a"])
+        assert values["weather.addon"] == "weather.multi", cls
+        order = [sid for sid, _ in bundle["class_a"]]
+        assert order[-1] == "weather.addon", (
+            "%s: the provider id rides the last fragment (70-weather.xml)" % cls
+        )
+        doc = bundle["addon_data"]["weather.multi"]["settings.xml"]
+        assert doc["pairs"] == [
+            ("loc1_name", "Sacramento, CA, US"),
+            ("loc1_url", "us/ca/sacramento"),
+            ("loc1_lat", "38.675"),
+            ("loc1_lon", "-121.525"),
+            ("loc1_id", "12798021"),
+        ], cls
+        assert "<!--" not in doc["xml"], (
+            "a comment in a Kodi-read settings.xml is a SIGABRT"
+        )
+        assert 'version="2"' in doc["xml"], (
+            "values documents carry version 2: every Kodi this fleet has run "
+            "accepts it, while the ts1 build's 4 is rejected by older builds"
+        )
+        assert bundle["skin_bools"] == [("show_weatherinfo", "true")], cls
+        modes = {a["id"]: a["mode"] for a in bundle["addons"]}
+        for aid in ("script.module.six", "script.module.soupsieve",
+                    "script.module.dateutil", "script.module.beautifulsoup4",
+                    "script.openweathermap.maps", "weather.multi"):
+            assert modes[aid] == "normal", aid
+
+
+def test_skinsettings_validation(monkeypatch, tmp_path):
+    """Structural rejection for the skin-bool leaf: wrong root, a non-bool
+    type (string support is deliberately unbuilt), a non-boolean value, an id
+    unsafe to interpolate into a builtin, and a duplicate id."""
+    profile = _import_profile(monkeypatch)
+    cases = (
+        ("<skinsettings><setting id='x' type='bool'>true</setting>"
+         "</skinsettings>", "root element"),
+        ("<settings><setting id='x' type='string'>v</setting></settings>",
+         "only bool"),
+        ("<settings><setting id='x' type='bool'>maybe</setting></settings>",
+         "not true/false"),
+        ("<settings><setting id='a,b' type='bool'>true</setting></settings>",
+         "bad setting id"),
+        ("<settings><setting id='x' type='bool'>true</setting>"
+         "<setting id='x' type='bool'>false</setting></settings>",
+         "duplicate"),
+    )
+    for body, needle in cases:
+        b = make_bundle(tmp_path / needle.replace(" ", "_").replace("/", "-"))
+        _write(b / "skinsettings.xml", body)
+        with pytest.raises(profile.ProfileError) as e:
+            profile.load(str(b), "fireos")
+        assert any(needle in p for p in e.value.problems), (needle, e.value.problems)
+    # and the well-formed shape loads
+    b = make_bundle(tmp_path / "good")
+    _write(
+        b / "skinsettings.xml",
+        "<settings><setting id='show_weatherinfo' type='bool'>true</setting>"
+        "</settings>",
+    )
+    bundle = profile.load(str(b), "fireos")
+    assert bundle["skin_bools"] == [("show_weatherinfo", "true")]
+
+
+def test_addon_data_values_idempotence_beats_the_enabled_guard(
+    monkeypatch, tmp_path
+):
+    """THE RE-RUN STATE, adversarial against the pre-2026.08.31.3 shape: after
+    a converged first apply the owner add-on IS enabled and its file has been
+    rewritten by Kodi with every default filled in (so byte equality is gone
+    forever), yet every bundle value stands. The old enabled-first guard
+    reported that as refused; the values compare must call it already-correct
+    and touch NO storage layer. A file that genuinely differs still hits the
+    guard: enabled owner, different value, refused, nothing written."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    # what Kodi leaves after weather.multi has run once: our values plus
+    # defaults it filled in itself
+    live = (
+        '<settings version="4">'
+        '<setting id="loc1_name">Sacramento, CA, US</setting>'
+        '<setting id="loc1_url">us/ca/sacramento</setting>'
+        '<setting id="loc1_lat">38.675</setting>'
+        '<setting id="loc1_lon">-121.525</setting>'
+        '<setting id="loc1_id">12798021</setting>'
+        '<setting id="loc2_name" default="true" />'
+        '<setting id="WAdd" default="true">false</setting>'
+        "</settings>"
+    )
+    rig.store.seed_disk("addon_data/weather.multi/settings.xml", live.encode())
+    rig.kodi.addons["weather.multi"] = True
+    bundle = rig.profile.load(str(HOUSE), "tvos")
+    op = next(
+        o for o in rig.profile.plan(bundle)
+        if o["kind"] == "addon-data" and o["addon"] == "weather.multi"
+    )
+    vectors_before = list(rig.vectors)
+    record = rig.profile.apply([op])
+    assert record["items"][0]["outcome"] == "already-correct", record["items"]
+    assert rig.vectors == vectors_before, (
+        "a values-correct file must not be rewritten or re-vectored"
+    )
+    # a genuinely different value with the owner enabled: still refused
+    drifted = live.replace("us/ca/sacramento", "us/ny/newyork")
+    rig.store.seed_disk("addon_data/weather.multi/settings.xml", drifted.encode())
+    record = rig.profile.apply([op])
+    assert record["items"][0]["outcome"] == "refused", record["items"]
+    kept = bytes(
+        rig.store.vfs_read("special://profile/addon_data/weather.multi/settings.xml")
+    )
+    assert b"us/ny/newyork" in kept, "a refused leaf must not write"
+
+
+def test_skin_bool_apply_already_and_no_skin_paths(monkeypatch, tmp_path):
+    """The three honest outcomes of the skin-bool leaf: set on the live skin
+    (two-argument builtin, the wiz mechanism), already-correct with NO builtin
+    emitted when the probe answers the bundle's value, and an explicit refusal
+    when there is no live skin session to set it in."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    op = {"kind": "skin-bool", "id": "show_weatherinfo", "value": "true"}
+    record = rig.profile.apply([op])
+    assert record["items"][0]["outcome"] == "applied", record["items"]
+    assert "Skin.SetBool(show_weatherinfo,true)" in rig.kodi.builtins
+    assert rig.kodi.skin_bools["show_weatherinfo"] is True
+    # re-run: already-correct, no second builtin
+    before = len([b for b in rig.kodi.builtins if b.startswith("Skin.SetBool")])
+    record = rig.profile.apply([op])
+    assert record["items"][0]["outcome"] == "already-correct", record["items"]
+    after = len([b for b in rig.kodi.builtins if b.startswith("Skin.SetBool")])
+    assert after == before, "already-correct must emit no builtin"
+    # no live skin session: refused, honestly, and nothing emitted
+    rig.kodi.skin = ""
+    rig.kodi.skin_bools.clear()
+    record = rig.profile.apply([op])
+    assert record["items"][0]["outcome"] == "refused", record["items"]
+    assert "no live skin session" in record["items"][0]["detail"]
+    assert not rig.kodi.skin_bools, "a refused leaf must not probe or set"
 
 
 # --------------------------------------------------------------------------- #

@@ -1,0 +1,18 @@
+<!-- SKIN settings, applied to whichever skin is LIVE when the profile runs
+     (stock Estuary on a fresh box, Estuary POV once the owner installs it -
+     both carry show_weatherinfo; POV wires it at skin control 704). These are
+     NOT core setting ids: a skin bool lives in the live skin's memory and is
+     serialized to addon_data/<skin>/settings.xml by the clean-shutdown flush,
+     the same mechanism restore's _apply_skin_settings rides (defect A). So the
+     apply sets it live via Skin.SetBool and the restart the flow already asks
+     for persists it; writing the file instead would be clobbered by that very
+     flush. A box that changes skins later re-runs the profile to set it on the
+     new skin, additively, like everything else here.
+
+     Only this add-on parses this file, never Kodi, so comments are fine
+     (unlike addon_data documents). Shape mirrors Kodi's own skin-settings
+     serialization: <setting id type="bool">true|false</setting>. Value
+     measured off the owner's hand-set ts1, 2026-08-31: the top-bar weather. -->
+<settings>
+    <setting id="show_weatherinfo" type="bool">true</setting>
+</settings>

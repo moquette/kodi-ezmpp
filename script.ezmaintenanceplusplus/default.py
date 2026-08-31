@@ -193,7 +193,7 @@ def APPLY_SETTINGS_PROFILE():
     if not ui.confirm(
         "Apply the %s settings profile?\n"
         "Web and remote control on, add-ons from any source,\n"
-        "the repository, sources and standard defaults.\n"
+        "the repository, sources, weather and standard defaults.\n"
         "Nothing is removed. Kodi asks to restart when done."
         % bundle["name"],
         yeslabel="Apply",
