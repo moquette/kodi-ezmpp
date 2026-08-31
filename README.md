@@ -11,9 +11,8 @@ the source in the Tony.7.Bones proxy repo (`tony7bones.github.io`), which drifte
 fixes landed in one copy without traveling to the other. That duplication is gone
 (2026-07-14): the proxy repo now carries only a hosted metadata mirror
 (`addons/hosted/script.ezmaintenanceplusplus/` - `addon.xml` + icon + fanart, no
-source) and points its `repository.json` at this repo's GitHub Release assets, the
-same "own repo + release asset" pattern already proven for `skin.estuary7`
-(`moquette/estuary7`). Fix bugs and add tests here; only bump the hosted metadata and
+source) and points its `repository.json` at this repo's GitHub Release assets: the
+"own repo + release asset" pattern. Fix bugs and add tests here; only bump the hosted metadata and
 re-release the proxy over there. Triage guide for backup/restore failures:
 `~/Code/moquette/kodi/.claude/skills/ezm-backup-doctor/SKILL.md`.
 
@@ -125,7 +124,7 @@ ruff check tests/ tools/
 
 `./build.sh` is a thin wrapper over `tools/build.py`, which builds the zip
 **deterministically** (sorted members, fixed 1980-01-01 timestamps - same discipline as
-`tony7bones.github.io`'s `generate_repo.py` and `moquette/estuary7`'s `build_skin.py`),
+`tony7bones.github.io`'s `generate_repo.py`),
 so a rebuild of the same source is byte-for-byte identical and a release's sha256
 actually means something.
 

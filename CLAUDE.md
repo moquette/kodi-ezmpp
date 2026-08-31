@@ -78,7 +78,7 @@ Read this before touching `wiz.py`, `tools.py`, `ui.py`, `_kodisettings.py`, or
   any non-Yes reverts. 2026.07.19.0 ships DETECT AND REPORT, not a fix. See
   the accepted next-cycle design is to terminate instead of `Quit`.
 - **Defect B (post-restore prompt discarded input) is FIXED.** The trigger was
-  never in EZM++: `skin.estuary7`'s `Home.xml:9` arms an alarm whose
+  never in EZM++: the since-decommissioned `skin.estuary7`'s `Home.xml:9` armed an alarm whose
   skinshortcuts rebuild ends in `ReloadSkin()` and destroys the window stack.
   `_keyboard_result` no longer collapses a non-answer into an answer,
   `prompt_devicename_after_restore` re-presents instead of advancing, and
@@ -117,7 +117,7 @@ NOT EXIST). This repo publishes a GitHub Release asset via `tools/release.sh`;
 the hub carries only a metadata mirror
 (`addons/hosted/script.ezmaintenanceplusplus/` - `addon.xml` + icon + fanart, no
 source) plus a `_tools/catalog.json` entry whose `assets.zip` template points
-boxes at that release asset. Same pattern as the skin, `moquette/estuary7`.
+boxes at that release asset.
 There is no virtual proxy and no `repository.json` left in the hub; both
 belonged to the retired dynamic-proxy design.
 

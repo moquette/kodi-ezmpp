@@ -2,7 +2,7 @@
 """Build the deterministic installable Kodi zip for EZ Maintenance++.
 
 Same discipline as the fleet's other build pipelines (tony7bones.github.io's
-`_tools/generate_repo.py:_zip_addon`, estuary7's `tools/build_skin.py`): members
+`_tools/generate_repo.py:_zip_addon`): members
 are collected in stable path-sorted order and written with fixed 1980-01-01
 timestamps + 0644 perms, so the zip is byte-for-byte reproducible across
 machines and runs (Kodi's version-based auto-upgrade breaks on same-version

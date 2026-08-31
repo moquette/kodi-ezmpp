@@ -2121,7 +2121,7 @@ def test_freshstart_refused_from_a_custom_skin_changes_nothing(dmod, monkeypatch
 
     dmod.mod.HOME = "/home/.kodi"
     dmod.mod.translatePath = lambda p: (
-        "/home/.kodi/addons/skin.estuary7" if p == "special://skin/" else p
+        "/home/.kodi/addons/skin.estuary.pov" if p == "special://skin/" else p
     )
     dmod.ui.confirm_wipe = lambda *a, **k: True
 
@@ -2155,7 +2155,7 @@ def test_freshstart_requires_stock_estuary_skin(dmod, monkeypatch):
     # deleted mid-wipe, so Fresh Start must refuse.
     dmod.mod.HOME = "/home/.kodi"
     dmod.mod.translatePath = lambda p: (
-        "/home/.kodi/addons/skin.estuary7" if p == "special://skin/" else p
+        "/home/.kodi/addons/skin.estuary.pov" if p == "special://skin/" else p
     )
     dmod.ui.confirm_wipe = lambda *a, **k: True
     prompts = []

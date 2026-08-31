@@ -363,7 +363,7 @@ def test_boot_check_reports_a_wrong_skin(env, monkeypatch):
     This is the ONLY place A3 is observable - the restore finishes before the
     restart that decides the outcome, so its own report cannot see it."""
     env.marker.parent.mkdir(parents=True, exist_ok=True)
-    env.marker.write_text("skin.estuary7")
+    env.marker.write_text("skin.estuary.pov")
     svc = env.load()
     monkeypatch.setattr(svc.xbmc, "getSkinDir", lambda: "skin.estuary", raising=False)
     svc._maybe_restore_check(_Mon())
@@ -377,9 +377,9 @@ def test_boot_check_is_silent_when_the_skin_matches(env, monkeypatch):
     on every restore - worse than the defect it detects. Both directions must be
     pinned, or a hardcoded 'report' passes the mismatch test alone."""
     env.marker.parent.mkdir(parents=True, exist_ok=True)
-    env.marker.write_text("skin.estuary7")
+    env.marker.write_text("skin.estuary.pov")
     svc = env.load()
-    monkeypatch.setattr(svc.xbmc, "getSkinDir", lambda: "skin.estuary7", raising=False)
+    monkeypatch.setattr(svc.xbmc, "getSkinDir", lambda: "skin.estuary.pov", raising=False)
     svc._maybe_restore_check(_Mon())
     assert env.notifications == [], "a correct reopen must stay silent"
     assert not env.marker.exists()
@@ -429,14 +429,14 @@ def test_boot_check_stays_silent_when_the_live_skin_is_unreadable(env, monkeypat
     because nothing covered an unreadable probe - and a box that simply could not
     report its skin would then be told its restore needs attention on every boot."""
     env.marker.parent.mkdir(parents=True, exist_ok=True)
-    env.marker.write_text("skin.estuary7")
+    env.marker.write_text("skin.estuary.pov")
     svc = env.load()
     monkeypatch.setattr(svc.xbmc, "getSkinDir", lambda: "", raising=False)
     svc._maybe_restore_check(_Mon())
     assert env.notifications == [], "an unreadable live skin must not report a mismatch"
 
     env.marker.parent.mkdir(parents=True, exist_ok=True)
-    env.marker.write_text("skin.estuary7")
+    env.marker.write_text("skin.estuary.pov")
     svc = env.load()
 
     def _boom():

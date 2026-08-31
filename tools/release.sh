@@ -2,7 +2,7 @@
 # Release EZ Maintenance++: build the deterministic zip, tag it, and publish
 # the zip as a GitHub Release asset on THIS repo (moquette/kodi-ezmpp).
 #
-# Mirrors estuary7's release discipline (tools/build_skin.py + `gh release`):
+# Release discipline:
 # build -> CI GATE -> sha256 -> tag -> gh release create -> verify the asset is
 # really, anonymously downloadable and the bytes match what was built. A release
 # that fails the verification step is a release that would 404 or ship the wrong

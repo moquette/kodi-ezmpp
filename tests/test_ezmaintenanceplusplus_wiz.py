@@ -2060,7 +2060,7 @@ def test_boot_skin_persists_restored_skin_to_disk_no_live_switch(
     )
 
     logs = []
-    wiz._apply_boot_skin(lambda m: logs.append(m), "skin.estuary7")
+    wiz._apply_boot_skin(lambda m: logs.append(m), "skin.estuary.pov")
 
     # (1) written straight to disk (write_guisetting), the last-step durable write.
     import xml.etree.ElementTree as ET
@@ -2069,7 +2069,7 @@ def test_boot_skin_persists_restored_skin_to_disk_no_live_switch(
     got = next(
         n.text for n in root.iter("setting") if n.get("id") == "lookandfeel.skin"
     )
-    assert got == "skin.estuary7", "the restored skin must be written to disk"
+    assert got == "skin.estuary.pov", "the restored skin must be written to disk"
     # (2) vectored into NSUserDefaults via persist_one (no-op off tvOS).
     assert persisted == ["guisettings.xml"]
     # (3) NO live Settings.SetSettingValue for the skin, NO SendClick / keep-skin nav.
@@ -2077,7 +2077,7 @@ def test_boot_skin_persists_restored_skin_to_disk_no_live_switch(
     assert not any("Settings." in p for p in rpc), "no live settings RPC at all"
     assert builtins == [], "no SendClick / navigation / keep-skin handling remains"
     # A readable diagnostic is published for JSON-RPC inspection.
-    assert props.get("ezm_boot_skin") == "written:skin.estuary7"
+    assert props.get("ezm_boot_skin") == "written:skin.estuary.pov"
 
 
 def _fake_tvos(wiz, monkeypatch, on=True):
@@ -2124,20 +2124,20 @@ def test_boot_skin_vectors_via_persist_one_on_tvos(wiz, monkeypatch, tmp_path):
         nsud, "persist_one", lambda rel, log=None: calls.append(rel) or False
     )
 
-    status = wiz._apply_boot_skin(lambda m: None, "skin.estuary7")
+    status = wiz._apply_boot_skin(lambda m: None, "skin.estuary.pov")
 
     assert calls == ["guisettings.xml"], (
         "guisettings.xml must be vectored into NSUserDefaults (persist_one) on tvOS"
     )
-    assert status == "unconfirmed:skin.estuary7", status
+    assert status == "unconfirmed:skin.estuary.pov", status
     # Item 4: the diagnostic property carries it too, for off-box JSON-RPC inspection.
-    assert props.get("ezm_boot_skin") == "unconfirmed:skin.estuary7"
+    assert props.get("ezm_boot_skin") == "unconfirmed:skin.estuary.pov"
     # The skin is still on disk - False means "not durably vectored", never "data gone".
     import xml.etree.ElementTree as ET
 
     r = ET.parse(str(home / "userdata" / "guisettings.xml")).getroot()
     got = next(n.text for n in r.iter("setting") if n.get("id") == "lookandfeel.skin")
-    assert got == "skin.estuary7"
+    assert got == "skin.estuary.pov"
 
 
 def test_boot_skin_confirmed_vector_on_tvos_reports_written(wiz, monkeypatch, tmp_path):
@@ -2155,10 +2155,10 @@ def test_boot_skin_confirmed_vector_on_tvos_reports_written(wiz, monkeypatch, tm
 
     monkeypatch.setattr(nsud, "persist_one", lambda rel, log=None: True)
 
-    assert wiz._apply_boot_skin(lambda m: None, "skin.estuary7") == (
-        "written:skin.estuary7"
+    assert wiz._apply_boot_skin(lambda m: None, "skin.estuary.pov") == (
+        "written:skin.estuary.pov"
     )
-    assert props.get("ezm_boot_skin") == "written:skin.estuary7"
+    assert props.get("ezm_boot_skin") == "written:skin.estuary.pov"
 
 
 def test_boot_skin_missing_or_empty_is_a_clean_noop(wiz, monkeypatch, tmp_path):
@@ -2191,7 +2191,7 @@ def test_boot_skin_missing_or_empty_is_a_clean_noop(wiz, monkeypatch, tmp_path):
     assert props.get("ezm_boot_skin") == "none"
 
 
-def _skin_zip(tmp_path, skin="skin.estuary7"):
+def _skin_zip(tmp_path, skin="skin.estuary.pov"):
     src = tmp_path / "kodi_settings_skin.zip"
     return _make_valid_zip(
         src,
@@ -2236,7 +2236,7 @@ def test_boot_skin_unconfirmed_vector_reports_needs_attention(
         "a partial restore may never claim Complete"
     )
     # Item 4: the diagnostic property is published IN ADDITION to the finding.
-    assert props.get("ezm_boot_skin") == "unconfirmed:skin.estuary7"
+    assert props.get("ezm_boot_skin") == "unconfirmed:skin.estuary.pov"
 
 
 def test_boot_skin_flaky_vector_self_heals_on_the_retry_without_warning(
@@ -2271,7 +2271,7 @@ def test_boot_skin_flaky_vector_self_heals_on_the_retry_without_warning(
     assert res["attention"] == [], "a self-healed vector must produce NO finding"
     assert statuses == [wiz.MSG_COMPLETE], statuses
     assert oks == [] and yesnos == [], "a transient failure must never reach the user"
-    assert props.get("ezm_boot_skin") == "written:skin.estuary7"
+    assert props.get("ezm_boot_skin") == "written:skin.estuary.pov"
 
 
 def test_boot_skin_unconfirmed_vector_off_tvos_is_never_a_finding(
@@ -2293,7 +2293,7 @@ def test_boot_skin_unconfirmed_vector_off_tvos_is_never_a_finding(
     assert res["attention"] == [], "no tvOS shadowing layer -> no finding"
     assert statuses == [wiz.MSG_COMPLETE], statuses
     assert oks == [] and yesnos == []
-    assert props.get("ezm_boot_skin") == "written:skin.estuary7"
+    assert props.get("ezm_boot_skin") == "written:skin.estuary.pov"
 
 
 def test_read_target_skin_captures_absent_and_present(wiz, tmp_path):
@@ -2301,9 +2301,9 @@ def test_read_target_skin_captures_absent_and_present(wiz, tmp_path):
     unparseable, or the setting is absent / empty."""
     present = tmp_path / "present.xml"
     present.write_text(
-        '<settings><setting id="lookandfeel.skin">skin.estuary7</setting></settings>'
+        '<settings><setting id="lookandfeel.skin">skin.estuary.pov</setting></settings>'
     )
-    assert wiz._read_target_skin(str(present)) == "skin.estuary7"
+    assert wiz._read_target_skin(str(present)) == "skin.estuary.pov"
 
     absent_setting = tmp_path / "absent.xml"
     absent_setting.write_text('<settings><setting id="other">x</setting></settings>')
@@ -2334,7 +2334,7 @@ def test_boot_skin_failure_never_breaks_the_restore(wiz, monkeypatch, tmp_path):
     monkeypatch.setattr(_kodisettings, "write_guisetting", _boom)
 
     logs = []
-    wiz._apply_boot_skin(lambda m: logs.append(m), "skin.estuary7")  # must not raise
+    wiz._apply_boot_skin(lambda m: logs.append(m), "skin.estuary.pov")  # must not raise
     assert any("boot-skin" in m for m in logs)
     assert props.get("ezm_boot_skin", "").startswith("failed:")
 
@@ -2405,15 +2405,15 @@ def test_restore_captures_skin_before_apply_and_writes_it_back_last(
             (
                 "guisettings.xml",
                 '<settings><setting id="lookandfeel.skin">'
-                "skin.estuary7</setting></settings>",
+                "skin.estuary.pov</setting></settings>",
             )
         ],
     )
     wiz.restore(str(src), confirm=False)
 
-    # The restored skin was captured (skin.estuary7) despite apply stamping stock, and
+    # The restored skin was captured (skin.estuary.pov) despite apply stamping stock, and
     # written back via write_guisetting.
-    assert ("lookandfeel.skin", "skin.estuary7") in wg
+    assert ("lookandfeel.skin", "skin.estuary.pov") in wg
     # It is the LAST userdata write: write_guisetting + persist_one come AFTER apply,
     # purge, and the re-vector.
     assert order.index("write_guisetting") > order.index("apply")
@@ -2424,7 +2424,7 @@ def test_restore_captures_skin_before_apply_and_writes_it_back_last(
 
     r = ET.parse(str(gp)).getroot()
     got = next(n.text for n in r.iter("setting") if n.get("id") == "lookandfeel.skin")
-    assert got == "skin.estuary7"
+    assert got == "skin.estuary.pov"
 
 
 def test_no_live_skin_switch_mechanism_remains_in_sources(wiz):
@@ -3449,9 +3449,10 @@ def test_dead_extractors_are_gone_and_stay_gone(wiz):
 
 # --------------------------------------------------------------------------- #
 # Restore defect B: a destroyed dialog must never be treated as an answer.
-# Reproduced on the bench 2026-07-18: skin.estuary7 arms a 15s AlarmClock on first
-# Home load whose skinshortcuts rebuild ends in ReloadSkin(), which destroyed this
-# very prompt 15.27s in while the marker was then consumed as if answered.
+# Reproduced on the bench 2026-07-18, on the since-decommissioned skin.estuary7:
+# it armed a 15s AlarmClock on first Home load whose skinshortcuts rebuild ends
+# in ReloadSkin(), which destroyed this very prompt 15.27s in while the marker
+# was then consumed as if answered.
 # See docs/restore-defect-b-reproduced-2026-07-18.md.
 # --------------------------------------------------------------------------- #
 def test_keyboard_result_reports_confirmation_honestly(wiz, monkeypatch):
@@ -3518,7 +3519,7 @@ def test_read_skin_settings_parses_and_ignores_unknown_types(wiz, tmp_path):
     """Mirror CSkinInfo::SettingsFromXML: keep bool/string, drop anything else."""
     p = _skin_settings_xml(
         tmp_path,
-        "skin.estuary7",
+        "skin.estuary.pov",
         [
             ("use_pov_search", "bool", "true"),
             ("home_label", "string", "Movies"),
@@ -3550,11 +3551,11 @@ def test_apply_skin_settings_uses_two_argument_builtins(wiz, monkeypatch):
     monkeypatch.setattr(
         wiz.xbmc, "executebuiltin", lambda cmd, *a: builtins.append(cmd), raising=False
     )
-    monkeypatch.setattr(wiz.xbmc, "getSkinDir", lambda: "skin.estuary7", raising=False)
+    monkeypatch.setattr(wiz.xbmc, "getSkinDir", lambda: "skin.estuary.pov", raising=False)
 
     status = wiz._apply_skin_settings(
         lambda *a, **k: None,
-        "skin.estuary7",
+        "skin.estuary.pov",
         [
             ("use_pov_search", "bool", "true"),
             ("hide_x", "bool", "false"),
@@ -3617,7 +3618,7 @@ def test_skin_string_values_survive_kodi_param_splitting(wiz, monkeypatch):
     monkeypatch.setattr(
         wiz.xbmc, "executebuiltin", lambda cmd, *a: builtins.append(cmd), raising=False
     )
-    monkeypatch.setattr(wiz.xbmc, "getSkinDir", lambda: "skin.estuary7", raising=False)
+    monkeypatch.setattr(wiz.xbmc, "getSkinDir", lambda: "skin.estuary.pov", raising=False)
 
     hostile = [
         "Movies, HD",
@@ -3629,7 +3630,7 @@ def test_skin_string_values_survive_kodi_param_splitting(wiz, monkeypatch):
     ]
     wiz._apply_skin_settings(
         lambda *a, **k: None,
-        "skin.estuary7",
+        "skin.estuary.pov",
         [("v%d" % i, "string", v) for i, v in enumerate(hostile)],
     )
 
@@ -3677,7 +3678,7 @@ def test_apply_skin_settings_skipped_when_restored_skin_is_not_live(wiz, monkeyp
     monkeypatch.setattr(wiz.xbmc, "getSkinDir", lambda: "skin.estuary", raising=False)
 
     status = wiz._apply_skin_settings(
-        lambda *a, **k: None, "skin.estuary7", [("x", "bool", "true")]
+        lambda *a, **k: None, "skin.estuary.pov", [("x", "bool", "true")]
     )
 
     assert builtins == [], "must emit NOTHING when the restored skin is not live"
@@ -3695,7 +3696,7 @@ def test_apply_skin_settings_never_breaks_a_restore(wiz, monkeypatch):
     )
     assert (
         wiz._apply_skin_settings(
-            lambda *a, **k: None, "skin.estuary7", [("x", "bool", "true")]
+            lambda *a, **k: None, "skin.estuary.pov", [("x", "bool", "true")]
         )
         is not None
     )
@@ -3914,14 +3915,14 @@ def test_restore_records_the_archives_skin_in_the_check_marker(
         "mark_restore_check_pending",
         lambda expected_skin=None: got.update(skin=expected_skin),
     )
-    monkeypatch.setattr(wiz, "_read_target_skin", lambda *a, **k: "skin.estuary7")
+    monkeypatch.setattr(wiz, "_read_target_skin", lambda *a, **k: "skin.estuary.pov")
 
     src = tmp_path / "kodi_settings_x.zip"
     _make_valid_zip(src, [("guisettings.xml", "<s/>")])
     wiz.restore(str(src), confirm=False)
 
     assert "skin" in got, "the restore must call the marker with the expected skin"
-    assert got["skin"] == "skin.estuary7", (
+    assert got["skin"] == "skin.estuary.pov", (
         "the ARCHIVE's skin must be recorded, got %r - without it the boot check "
         "cannot detect a wrong-skin reopen" % (got["skin"],)
     )

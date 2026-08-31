@@ -4,7 +4,7 @@
 #
 # Thin wrapper over tools/build.py, which builds the zip DETERMINISTICALLY
 # (sorted members, fixed 1980-01-01 timestamps) - same discipline as
-# tony7bones.github.io's generate_repo.py and estuary7's build_skin.py, so a
+# tony7bones.github.io's generate_repo.py, so a
 # rebuild of the same source is byte-for-byte identical and the sha256 in a
 # release's notes actually means something.
 set -euo pipefail

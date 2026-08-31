@@ -373,9 +373,9 @@ def test_restore_check_marker_round_trips_the_expected_skin(tools):
     check is the only place the outcome is observable - and it can only report a
     mismatch if the expectation was recorded here."""
     t = tools.mod
-    assert t.mark_restore_check_pending("skin.estuary7") is True
+    assert t.mark_restore_check_pending("skin.estuary.pov") is True
     assert t.restore_check_pending() is True
-    assert t.restore_check_expected_skin() == "skin.estuary7"
+    assert t.restore_check_expected_skin() == "skin.estuary.pov"
     t.clear_restore_check_marker()
     assert t.restore_check_pending() is False
     assert t.restore_check_expected_skin() is None

@@ -34,14 +34,14 @@ status; `CLAUDE.md` carries the short version at the top.
   This is the ONLY place the add-on source is edited.
   **LOCAL CHECKOUT: `~/Code/moquette/kodi/ezmpp`.** The standalone path
   `~/Code/moquette/ezmaintenanceplusplus` that older docs cite DOES NOT EXIST
-  (verified 2026-07-18); the sibling repos live at `~/Code/moquette/kodi/repo`
-  (tony7bones.github.io) and `~/Code/moquette/kodi/estuary7`.
+  (verified 2026-07-18); the sibling hub repo lives at `~/Code/kodi/repo`
+  (tony7bones.github.io).
 - Add-on dir: `script.ezmaintenanceplusplus/`. Version is whatever `addon.xml` says
   (date-stamped `YYYY.MM.DD.N` scheme; check the file, do not trust a number written
   down in any doc, including this one).
 - Build: `./build.sh` -> `dist/script.ezmaintenanceplusplus-<version>.zip`, a
-  DETERMINISTIC zip (sorted members, fixed 1980-01-01 timestamps - same discipline as
-  `moquette/estuary7`'s `tools/build_skin.py`). `./build.sh --check` builds twice and
+  DETERMINISTIC zip (sorted members, fixed 1980-01-01 timestamps).
+  `./build.sh --check` builds twice and
   byte-compares.
 - Release: `tools/release.sh` builds, tags `v<version>`, publishes the zip as a
   GitHub Release asset on `moquette/ezmaintenanceplusplus` via `gh release create`,
@@ -50,7 +50,7 @@ status; `CLAUDE.md` carries the short version at the top.
   --dry-run` shows the plan without tagging/releasing.
 - Distribution: `tony7bones.github.io` carries only a metadata pointer at
   `addons/hosted/script.ezmaintenanceplusplus/` (addon.xml + icon.png + fanart.jpg,
-  hand-synced to the released version - same pattern as `addons/hosted/skin.estuary7/`)
+  hand-synced to the released version)
   and its `repository.json` entry's `assets.zip` points at this repo's release asset
   URL. After cutting a release here, bump that hosted `addon.xml`'s version in
   `tony7bones.github.io` and ship it via `python3 _tools/release.py --proxy` (it is a
