@@ -1978,3 +1978,99 @@ def test_autocompletion_already_library_is_left_byte_unchanged(monkeypatch, tmp_
     assert outcome == "already-correct"
     assert detail == ""
     assert (ac_dir / "addon.xml").read_text(encoding="utf-8") == seed
+
+
+# --------------------------------------------------------------------------- #
+# POV resume seek self-heal (profile.ensure_pov_resume_seek_applied)
+# --------------------------------------------------------------------------- #
+_POV_PLAYER_BROKEN_SNIPPET = (
+    "class POVPlayer(MediaPlayer):\n"
+    "\tdef run(self, url=None, meta=None, progress_media=None):\n"
+    "\t\tif not url: return\n"
+    "\t\ttry:\n"
+    "\t\t\tbookmark = self.bookmarkPOV()\n"
+    "\t\t\tlistitem = self.make_listitem()\n"
+    "\t\t\tlistitem.setProperty('StartPercent', str(bookmark))\n"
+    "\n"
+    "\t\t\tself.playback_event = False\n"
+    "\t\t\tself.play(url, listitem)\n"
+    "\t\t\twhile not self.playback_event: kodi_utils.sleep(100)\n"
+    "\t\t\tif callable(progress_media): progress_media()\n"
+    "\t\t\tkodi_utils.close_all_dialog()\n"
+    "\t\texcept: pass\n"
+)
+
+
+def test_pov_resume_seek_not_installed_is_a_silent_noop(monkeypatch, tmp_path):
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    outcome, detail = rig.profile.ensure_pov_resume_seek_applied(log=lambda m: None)
+    assert outcome == "already-correct"
+    assert detail == "not installed"
+    assert rig.vectors == []
+
+
+def test_pov_resume_seek_patches_the_broken_block(monkeypatch, tmp_path):
+    """The broken block is replaced with the seek inserted in the right
+    place, and every other line of this third-party file is untouched."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    pov_dir = Path(rig.store.translate("special://home/addons/plugin.video.pov"))
+    (pov_dir / "resources" / "lib" / "modules").mkdir(parents=True, exist_ok=True)
+    player_path = pov_dir / "resources" / "lib" / "modules" / "player.py"
+    player_path.write_text(_POV_PLAYER_BROKEN_SNIPPET, encoding="utf-8")
+
+    outcome, detail = rig.profile.ensure_pov_resume_seek_applied(log=lambda m: None)
+
+    assert outcome == "applied"
+    new_text = player_path.read_text(encoding="utf-8")
+    assert "if bookmark:" in new_text
+    assert "self.seekTime(total * float(bookmark) / 100.0)" in new_text
+    assert "setProperty('StartPercent', str(bookmark))" in new_text, (
+        "unrelated lines must be left in place"
+    )
+    # every byte outside the patched block is unchanged
+    unpatched_again = new_text.replace(
+        "\t\t\tif bookmark:\n"
+        "\t\t\t\ttry:\n"
+        "\t\t\t\t\ttotal = self.getTotalTime()\n"
+        "\t\t\t\t\tif total: self.seekTime(total * float(bookmark) / 100.0)\n"
+        "\t\t\t\texcept: pass\n",
+        "",
+        1,
+    )
+    assert unpatched_again == _POV_PLAYER_BROKEN_SNIPPET
+
+
+def test_pov_resume_seek_second_run_is_already_correct_no_new_write(
+    monkeypatch, tmp_path
+):
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    pov_dir = Path(rig.store.translate("special://home/addons/plugin.video.pov"))
+    (pov_dir / "resources" / "lib" / "modules").mkdir(parents=True, exist_ok=True)
+    player_path = pov_dir / "resources" / "lib" / "modules" / "player.py"
+    player_path.write_text(_POV_PLAYER_BROKEN_SNIPPET, encoding="utf-8")
+
+    first = rig.profile.ensure_pov_resume_seek_applied(log=lambda m: None)
+    assert first[0] == "applied"
+    patched_text = player_path.read_text(encoding="utf-8")
+
+    second = rig.profile.ensure_pov_resume_seek_applied(log=lambda m: None)
+    assert second == ("already-correct", "")
+    assert player_path.read_text(encoding="utf-8") == patched_text, (
+        "a second, already-correct run must not touch the file"
+    )
+
+
+def test_pov_resume_seek_leaves_unrecognized_code_alone(monkeypatch, tmp_path):
+    """A POV update that changed this code enough that the exact broken
+    block no longer matches must be left alone, not blindly patched."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    pov_dir = Path(rig.store.translate("special://home/addons/plugin.video.pov"))
+    (pov_dir / "resources" / "lib" / "modules").mkdir(parents=True, exist_ok=True)
+    player_path = pov_dir / "resources" / "lib" / "modules" / "player.py"
+    different = "class POVPlayer(MediaPlayer):\n\tdef run(self, *a, **k):\n\t\tpass\n"
+    player_path.write_text(different, encoding="utf-8")
+
+    outcome, detail = rig.profile.ensure_pov_resume_seek_applied(log=lambda m: None)
+
+    assert outcome == "already-correct"
+    assert player_path.read_text(encoding="utf-8") == different

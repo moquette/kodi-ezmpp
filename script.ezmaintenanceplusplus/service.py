@@ -118,6 +118,7 @@ def _startup_sequence(monitor):
     _maybe_resume_paused_pvr()
     _maybe_fix_pov_reuse_invoker()
     _maybe_hide_autocompletion()
+    _maybe_fix_pov_resume_seek()
     _maybe_restore_check(monitor)
     _maybe_profile_check(monitor)
 
@@ -728,6 +729,40 @@ def _maybe_hide_autocompletion():
         try:
             xbmc.log(
                 "ezmaintenanceplus: AutoCompletion hide crashed %s: %s"
+                % (type(e).__name__, e),
+                level=xbmc.LOGWARNING,
+            )
+        except Exception:
+            pass
+
+
+def _maybe_fix_pov_resume_seek():
+    """Self-heal plugin.video.pov's dead Resume/Start-from-beginning seek
+    every boot - see profile.ensure_pov_resume_seek_applied's docstring and
+    the upstream report (github.com/kodifitzwell/repo/issues/141) for why
+    this exists. Silent when POV is absent, the file is missing, or the
+    exact broken block is not found (already patched, or a POV update
+    changed the code); logs at INFO when it heals something."""
+    try:
+        from resources.lib.modules import profile as profile_mod
+
+        outcome, detail = profile_mod.ensure_pov_resume_seek_applied()
+        if outcome == profile_mod.APPLIED:
+            xbmc.log(
+                "ezmaintenanceplus: POV resume seek patched (player.py)%s"
+                % ((" (%s)" % detail) if detail else ""),
+                level=loglevel,
+            )
+        elif outcome == profile_mod.ERROR:
+            xbmc.log(
+                "ezmaintenanceplus: POV resume seek patch failed%s"
+                % ((" (%s)" % detail) if detail else ""),
+                level=xbmc.LOGWARNING,
+            )
+    except Exception as e:
+        try:
+            xbmc.log(
+                "ezmaintenanceplus: POV resume seek patch crashed %s: %s"
                 % (type(e).__name__, e),
                 level=xbmc.LOGWARNING,
             )

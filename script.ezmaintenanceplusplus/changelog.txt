@@ -1,3 +1,16 @@
+v2026.09.16.3
+- POV's Resume / Start from beginning dialog now actually resumes.
+  Picking Resume asked the question and remembered the answer, but
+  never told Kodi where to seek to, so playback started from the
+  beginning almost every time regardless of what you picked. The
+  Settings Profile now checks on every boot and, if the seek is still
+  missing, adds the one line that applies it, the same self-heal shape
+  already used for a couple of other add-on quirks today. Filed
+  upstream too (kodifitzwell/repo#141), so this is a stopgap until POV
+  ships its own fix, not a replacement for one. Only the missing seek
+  is touched, nothing else about POV changes, and a box without POV
+  installed is untouched.
+
 v2026.09.16.2
 - AutoCompletion for the virtual keyboard no longer shows up as a tile in
   Addons > Program add-ons. It ships as a plain script add-on, which Kodi

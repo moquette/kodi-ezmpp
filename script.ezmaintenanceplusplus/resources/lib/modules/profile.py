@@ -122,6 +122,8 @@ POV_REUSE_INVOKER_SETTING_ID = "reuse_language_invoker"
 
 AUTOCOMPLETION_ADDON_ID = "plugin.program.autocompletion"
 
+POV_RESUME_SEEK_FILE = "resources/lib/modules/player.py"
+
 # The three ids Kodi gates behind its own modal confirm, mapped to the core
 # localized string id of the dialog TEXT (heading is 19098, "Warning"). The
 # text match is the guard that we only ever answer KODI'S question for the id
@@ -1804,6 +1806,79 @@ def _fix_autocompletion_addon_xml(log):
             f.write(new_text)
     except Exception as e:
         return ERROR, "addon.xml write failed: %s" % e
+    return APPLIED, ""
+
+
+# The exact broken block in plugin.video.pov's player.py (measured v6.08.15):
+# the chosen resume bookmark is stashed on a listitem property nothing reads,
+# and playback starts with no seek at all, so "Resume" always plays from 0.
+# Patched by inserting a seek right after playback confirms started, using
+# the same bare try/except style already used throughout this function's own
+# file. A plain substring match, not a regex: this is third-party Python
+# source, so an exact, literal anchor is the conservative choice, same
+# reasoning as the addon.xml text substitutions above.
+_POV_RESUME_SEEK_BROKEN = (
+    "\t\t\tself.play(url, listitem)\n"
+    "\t\t\twhile not self.playback_event: kodi_utils.sleep(100)\n"
+    "\t\t\tif callable(progress_media): progress_media()\n"
+)
+_POV_RESUME_SEEK_FIXED = (
+    "\t\t\tself.play(url, listitem)\n"
+    "\t\t\twhile not self.playback_event: kodi_utils.sleep(100)\n"
+    "\t\t\tif bookmark:\n"
+    "\t\t\t\ttry:\n"
+    "\t\t\t\t\ttotal = self.getTotalTime()\n"
+    "\t\t\t\t\tif total: self.seekTime(total * float(bookmark) / 100.0)\n"
+    "\t\t\t\texcept: pass\n"
+    "\t\t\tif callable(progress_media): progress_media()\n"
+)
+
+
+def ensure_pov_resume_seek_applied(log=None):
+    """Self-heal plugin.video.pov's dead resume seek every boot. Filed
+    upstream 2026-09-16: https://github.com/kodifitzwell/repo/issues/141.
+    POV's own Resume/Start-from-beginning dialog computes and confirms a
+    resume percent, stores it on a listitem property (StartPercent) that is
+    never read anywhere in the add-on, and never calls seekTime, so choosing
+    Resume silently plays from 0 every time. Not a fork: this add-on's own
+    logic and every other line of player.py are untouched, only the missing
+    seek call is inserted at the one place it belongs.
+
+    Silent no-op when the add-on is not installed or the exact broken block
+    is not found (a POV update already fixed it, or changed this code enough
+    that a blind patch here would be unsafe - conservative literal match by
+    design). Idempotent: once patched, the broken substring no longer
+    matches, so a second run is a clean no-op. Never raises - this runs
+    unattended at every boot."""
+    log = log or (
+        lambda msg: xbmc.log(
+            "ezmaintenanceplus: profile: %s" % msg, level=xbmc.LOGINFO
+        )
+    )
+    if not pov_installed():
+        return ALREADY, "not installed"
+    path = xbmcvfs.translatePath(
+        "special://home/addons/%s/%s" % (POV_ADDON_ID, POV_RESUME_SEEK_FILE)
+    )
+    if not os.path.exists(path):
+        return ALREADY, "player.py not found"
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except Exception as e:
+        return ERROR, "player.py unreadable: %s" % e
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return ERROR, "player.py not utf-8: %s" % e
+    if _POV_RESUME_SEEK_BROKEN not in text:
+        return ALREADY, ""
+    new_text = text.replace(_POV_RESUME_SEEK_BROKEN, _POV_RESUME_SEEK_FIXED, 1)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_text)
+    except Exception as e:
+        return ERROR, "player.py write failed: %s" % e
     return APPLIED, ""
 
 
