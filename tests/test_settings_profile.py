@@ -1704,3 +1704,176 @@ def test_rssfeeds_current_md5_reads_the_vfs_layer(monkeypatch, tmp_path):
     rig.profile.apply([{"kind": "rss-feeds", "xml": raw}])
     assert rig.profile.rssfeeds_current_md5() == hashlib.md5(raw).hexdigest()
     assert rig.profile.rssfeeds_current_md5() == HOUSE_RSS_MD5
+
+
+# --------------------------------------------------------------------------- #
+# POV reuse_language_invoker self-heal (profile.ensure_pov_reuse_invoker_disabled)
+# --------------------------------------------------------------------------- #
+def test_pov_reuse_invoker_not_installed_is_a_silent_noop(monkeypatch, tmp_path):
+    """No plugin.video.pov on disk at all: nothing to heal, nothing touched."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    result = rig.profile.ensure_pov_reuse_invoker_disabled(log=lambda m: None)
+    assert result == {
+        "settings": "already-correct",
+        "addon_xml": "already-correct",
+        "detail": "not installed",
+    }
+    assert rig.vectors == []
+
+
+def test_pov_reuse_invoker_settings_and_addon_xml_flip_true_to_false(
+    monkeypatch, tmp_path
+):
+    """Both files POV consults, addon_data/plugin.video.pov/settings.xml and
+    addons/plugin.video.pov/addon.xml, flip true to false, and an unrelated
+    setting id alongside the target is left byte-unchanged."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    pov_dir = Path(rig.store.translate("special://home/addons/plugin.video.pov"))
+    pov_dir.mkdir(parents=True, exist_ok=True)
+    (pov_dir / "addon.xml").write_text(
+        '<?xml version="1.0"?>\n'
+        '<addon id="plugin.video.pov" version="6.08.15">\n'
+        "  <extension point=\"xbmc.addon.metadata\">\n"
+        "    <reuselanguageinvoker>true</reuselanguageinvoker>\n"
+        "  </extension>\n"
+        "</addon>\n",
+        encoding="utf-8",
+    )
+    rig.store.seed_disk(
+        "addon_data/plugin.video.pov/settings.xml",
+        (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<settings version=\"2\">\n"
+            '    <setting id="reuse_language_invoker" default="true">true</setting>\n'
+            '    <setting id="some_other_flag" default="false">true</setting>\n'
+            "</settings>\n"
+        ).encode("utf-8"),
+    )
+
+    result = rig.profile.ensure_pov_reuse_invoker_disabled(log=lambda m: None)
+
+    assert result["settings"] == "applied"
+    assert result["addon_xml"] == "applied"
+
+    addon_xml_text = (pov_dir / "addon.xml").read_text(encoding="utf-8")
+    assert "<reuselanguageinvoker>false</reuselanguageinvoker>" in addon_xml_text
+
+    settings_raw = bytes(
+        rig.store.vfs_read(
+            "special://profile/addon_data/plugin.video.pov/settings.xml"
+        )
+    )
+    values = {
+        n.get("id"): (n.text or "") for n in ET.fromstring(settings_raw).iter("setting")
+    }
+    assert values["reuse_language_invoker"] == "false"
+    assert values["some_other_flag"] == "true", (
+        "an unrelated setting id must be left untouched"
+    )
+    assert rig.vectors.count("addon_data/plugin.video.pov/settings.xml") == 1
+
+
+def test_pov_reuse_invoker_second_run_is_already_correct_no_new_vector(
+    monkeypatch, tmp_path
+):
+    """Idempotent: a second boot's heal finds both files already false and
+    takes no new storage vector."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    pov_dir = Path(rig.store.translate("special://home/addons/plugin.video.pov"))
+    pov_dir.mkdir(parents=True, exist_ok=True)
+    (pov_dir / "addon.xml").write_text(
+        '<?xml version="1.0"?>\n'
+        '<addon id="plugin.video.pov" version="6.08.15">\n'
+        "  <extension point=\"xbmc.addon.metadata\">\n"
+        "    <reuselanguageinvoker>true</reuselanguageinvoker>\n"
+        "  </extension>\n"
+        "</addon>\n",
+        encoding="utf-8",
+    )
+    rig.store.seed_disk(
+        "addon_data/plugin.video.pov/settings.xml",
+        (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<settings version=\"2\">\n"
+            '    <setting id="reuse_language_invoker" default="true">true</setting>\n'
+            "</settings>\n"
+        ).encode("utf-8"),
+    )
+
+    first = rig.profile.ensure_pov_reuse_invoker_disabled(log=lambda m: None)
+    assert first["settings"] == "applied"
+    assert rig.vectors.count("addon_data/plugin.video.pov/settings.xml") == 1
+
+    second = rig.profile.ensure_pov_reuse_invoker_disabled(log=lambda m: None)
+    assert second == {
+        "settings": "already-correct",
+        "addon_xml": "already-correct",
+        "detail": "",
+    }
+    assert rig.vectors.count("addon_data/plugin.video.pov/settings.xml") == 1, (
+        "a second, already-correct run must take no new vector"
+    )
+
+
+def test_pov_reuse_invoker_leaves_already_false_alone(monkeypatch, tmp_path):
+    """Both files already reading false: reported already-correct, and every
+    byte is left exactly as seeded."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    pov_dir = Path(rig.store.translate("special://home/addons/plugin.video.pov"))
+    pov_dir.mkdir(parents=True, exist_ok=True)
+    addon_xml_seed = (
+        '<?xml version="1.0"?>\n'
+        '<addon id="plugin.video.pov" version="6.08.15">\n'
+        "  <extension point=\"xbmc.addon.metadata\">\n"
+        "    <reuselanguageinvoker>false</reuselanguageinvoker>\n"
+        "  </extension>\n"
+        "</addon>\n"
+    )
+    (pov_dir / "addon.xml").write_text(addon_xml_seed, encoding="utf-8")
+    settings_seed = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<settings version=\"2\">\n"
+        '    <setting id="reuse_language_invoker" default="true">false</setting>\n'
+        "</settings>\n"
+    ).encode("utf-8")
+    rig.store.seed_disk("addon_data/plugin.video.pov/settings.xml", settings_seed)
+
+    result = rig.profile.ensure_pov_reuse_invoker_disabled(log=lambda m: None)
+
+    assert result == {
+        "settings": "already-correct",
+        "addon_xml": "already-correct",
+        "detail": "",
+    }
+    assert (pov_dir / "addon.xml").read_text(encoding="utf-8") == addon_xml_seed
+    assert bytes(
+        rig.store.vfs_read(
+            "special://profile/addon_data/plugin.video.pov/settings.xml"
+        )
+    ) == settings_seed
+    assert rig.vectors == []
+
+
+def test_pov_reuse_invoker_id_absent_from_settings_is_already_correct(
+    monkeypatch, tmp_path
+):
+    """POV has never written the setting at all (fresh install, default not
+    yet materialized): nothing to flip, no write attempted."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    pov_dir = Path(rig.store.translate("special://home/addons/plugin.video.pov"))
+    pov_dir.mkdir(parents=True, exist_ok=True)
+    (pov_dir / "addon.xml").write_text(
+        '<?xml version="1.0"?>\n'
+        '<addon id="plugin.video.pov" version="6.08.15">\n'
+        "  <extension point=\"xbmc.addon.metadata\">\n"
+        "    <reuselanguageinvoker>false</reuselanguageinvoker>\n"
+        "  </extension>\n"
+        "</addon>\n",
+        encoding="utf-8",
+    )
+
+    result = rig.profile.ensure_pov_reuse_invoker_disabled(log=lambda m: None)
+
+    assert result["settings"] == "already-correct"
+    assert result["addon_xml"] == "already-correct"
+    assert rig.vectors == []

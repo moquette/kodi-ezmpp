@@ -117,6 +117,9 @@ SCHEMA_VERSION = 1
 DEVICE_CLASSES = ("fireos", "tvos", "androidtv", "bench")
 OWN_ID = "script.ezmaintenanceplusplus"
 
+POV_ADDON_ID = "plugin.video.pov"
+POV_REUSE_INVOKER_SETTING_ID = "reuse_language_invoker"
+
 # The three ids Kodi gates behind its own modal confirm, mapped to the core
 # localized string id of the dialog TEXT (heading is 19098, "Warning"). The
 # text match is the guard that we only ever answer KODI'S question for the id
@@ -424,6 +427,20 @@ def _load_sources(path, problems):
 # "general/settinglevel". Deliberately NOT the <setting id> dot namespace -
 # nodes live OUTSIDE the id space, which is the whole reason this class exists.
 _NODE_PATH_RE = re.compile(r"^[a-z][a-z0-9_]*(?:/[a-z][a-z0-9_]*)+$")
+
+# plugin.video.pov's own settings.xml value for reuse_language_invoker.
+# Attribute-order independent (a lookahead for the id, not an anchored
+# prefix), because this is a live third-party file, not one we author.
+_POV_SETTINGS_INVOKER_RE = re.compile(
+    r'(<setting\b(?=[^>]*\bid="reuse_language_invoker")[^>]*>)\s*true\s*(</setting>)',
+    re.IGNORECASE,
+)
+
+# plugin.video.pov's own addon.xml <reuselanguageinvoker> element text.
+_POV_ADDON_XML_INVOKER_RE = re.compile(
+    r"(<reuselanguageinvoker>)\s*true\s*(</reuselanguageinvoker>)",
+    re.IGNORECASE,
+)
 
 
 def _load_nodes(bundle_dir, overlay_dir, problems):
@@ -1582,6 +1599,118 @@ def _apply_sources(op, ctx):
             renamed,
         )
     return ALREADY, ""
+
+
+def pov_installed():
+    """True iff plugin.video.pov is present on disk. Disk, not
+    Addons.GetAddonDetails: this runs from service.py's boot sequence before
+    Kodi's GUI (and its RPC surface) is guaranteed ready, the same reason
+    _apply_stage's fallback check is a directory probe."""
+    try:
+        return os.path.isdir(
+            xbmcvfs.translatePath("special://home/addons/%s" % POV_ADDON_ID)
+        )
+    except Exception:
+        return False
+
+
+def ensure_pov_reuse_invoker_disabled(log=None):
+    """Self-heal plugin.video.pov's reuse_language_invoker back to false on
+    every boot. Watch item project-watch-python-invoker-sigabrt.md: Kodi 22's
+    current nightly reuses one embedded Python interpreter across POV's
+    script invocations when this is true, corrupting interpreter-global
+    state - a SIGABRT on office (2026-08-31) and a TypeError deep in stdlib
+    enum.py on bedroom (2026-09-16), both cleared the moment this setting
+    read false in BOTH files POV itself consults. A one-time manual flip does
+    not stick: POV's own settings-apply path or a fresh install regenerates
+    both files from its shipped default (measured reverted on office by
+    2026-09-16), so this runs every boot rather than once.
+
+    Not a fork of POV, and not touching anything POV does not itself already
+    expose as a setting: this is the same category of work as every other
+    class A / addon_data assertion this module performs, reasserting OUR
+    fleet's chosen configuration of a dependency, never its code.
+
+    Silent no-op when POV is not installed. Idempotent per file: a file
+    already reading false is touched on no storage layer. Never raises -
+    this runs unattended at every boot."""
+    log = log or (
+        lambda msg: xbmc.log(
+            "ezmaintenanceplus: profile: %s" % msg, level=xbmc.LOGINFO
+        )
+    )
+    if not pov_installed():
+        return {"settings": ALREADY, "addon_xml": ALREADY, "detail": "not installed"}
+    settings_outcome, settings_detail = _fix_pov_settings_invoker(log)
+    addonxml_outcome, addonxml_detail = _fix_pov_addon_xml_invoker(log)
+    detail = "; ".join(d for d in (settings_detail, addonxml_detail) if d)
+    return {
+        "settings": settings_outcome,
+        "addon_xml": addonxml_outcome,
+        "detail": detail,
+    }
+
+
+def _fix_pov_settings_invoker(log):
+    """The userdata half: addon_data/plugin.video.pov/settings.xml. Read
+    through the VFS and, if a write is needed, vectored through
+    nsud.persist_one - this is exactly the class of file nsud exists to keep
+    durable on tvOS (a userdata XML Kodi reads through CAddonSettings::Load).
+    A targeted text substitution, not a parse/rebuild, so every byte POV
+    itself wrote stands except the one value in question."""
+    rel = "addon_data/%s/settings.xml" % POV_ADDON_ID
+    raw = _read_special_bytes("special://profile/" + rel)
+    if not raw:
+        return ALREADY, ""  # POV has never written its settings; nothing to flip
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return ERROR, "settings.xml not utf-8: %s" % e
+    new_text, n = _POV_SETTINGS_INVOKER_RE.subn(r"\1false\2", text, count=1)
+    if not n:
+        return ALREADY, ""
+    target = xbmcvfs.translatePath("special://profile/" + rel)
+    try:
+        with open(target, "w", encoding="utf-8") as f:
+            f.write(new_text)
+    except Exception as e:
+        return ERROR, "settings.xml write failed: %s" % e
+    persisted = nsud.persist_one(rel, log=log)
+    if not persisted and _is_tvos():
+        return APPLIED, "tvOS vector unconfirmed"
+    return APPLIED, ""
+
+
+def _fix_pov_addon_xml_invoker(log):
+    """The add-on's own addon.xml, under special://home/addons/ - a plain
+    POSIX file on every platform including tvOS, never shadowed by an
+    NSUserDefaults key (that mechanism only intercepts the per-profile
+    settings tree; the add-on install tree is untouched). A plain
+    read/write is therefore the correct, complete write here - no nsud
+    call belongs in this function."""
+    path = xbmcvfs.translatePath(
+        "special://home/addons/%s/addon.xml" % POV_ADDON_ID
+    )
+    if not os.path.exists(path):
+        return ALREADY, ""
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except Exception as e:
+        return ERROR, "addon.xml unreadable: %s" % e
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return ERROR, "addon.xml not utf-8: %s" % e
+    new_text, n = _POV_ADDON_XML_INVOKER_RE.subn(r"\1false\2", text, count=1)
+    if not n:
+        return ALREADY, ""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_text)
+    except Exception as e:
+        return ERROR, "addon.xml write failed: %s" % e
+    return APPLIED, ""
 
 
 # --------------------------------------------------------------------------- #

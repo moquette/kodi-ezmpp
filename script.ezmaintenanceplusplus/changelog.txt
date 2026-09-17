@@ -1,3 +1,15 @@
+v2026.09.16.1
+- POV now keeps its interpreter-reuse setting off, every boot. On the
+  current Kodi 22 nightly, POV's background sync can crash the moment it
+  starts if that setting is on, because Kodi reuses one Python interpreter
+  across the add-on's script runs and that reuse corrupts unrelated Python
+  state on this build; the visible symptom is POV looking broken and never
+  authorizing or syncing anything. Turning the setting off by hand already
+  fixed it once, but it quietly turned itself back on later, so the
+  Settings Profile now checks and resets it on every boot instead of once,
+  the same way it already looks after other add-on defaults. Nothing to do
+  by hand, and boxes without POV installed are untouched.
+
 v2026.08.31.5
 - Backups now go to the right folder for each device type. The Settings
   Profile used to point every Android box at the Fire TV backup folder; it

@@ -116,6 +116,7 @@ def _startup_sequence(monitor):
     _maybe_purge_stale_nsud_keys()
     _purge_stale_bytecode()
     _maybe_resume_paused_pvr()
+    _maybe_fix_pov_reuse_invoker()
     _maybe_restore_check(monitor)
     _maybe_profile_check(monitor)
 
@@ -644,6 +645,53 @@ def _maybe_resume_paused_pvr():
             xbmc.log(
                 "ezmaintenanceplus: PVR pause recovery failed %s: %s"
                 % (type(e).__name__, e),
+                level=xbmc.LOGWARNING,
+            )
+        except Exception:
+            pass
+
+
+def _maybe_fix_pov_reuse_invoker():
+    """Self-heal plugin.video.pov's reuse_language_invoker back to false
+    every boot - see profile.ensure_pov_reuse_invoker_disabled's docstring
+    and .claude/memory/project-watch-python-invoker-sigabrt.md for why this
+    exists and why it cannot be a one-time fix. Silent when POV is absent or
+    already correct; logs at INFO when it heals something."""
+    try:
+        from resources.lib.modules import profile as profile_mod
+
+        result = profile_mod.ensure_pov_reuse_invoker_disabled()
+        if result["settings"] == profile_mod.APPLIED or (
+            result["addon_xml"] == profile_mod.APPLIED
+        ):
+            xbmc.log(
+                "ezmaintenanceplus: POV reuse_language_invoker healed back "
+                "to false (settings=%s addon_xml=%s)%s"
+                % (
+                    result["settings"],
+                    result["addon_xml"],
+                    (" (%s)" % result["detail"]) if result["detail"] else "",
+                ),
+                level=loglevel,
+            )
+        elif result["settings"] == profile_mod.ERROR or (
+            result["addon_xml"] == profile_mod.ERROR
+        ):
+            xbmc.log(
+                "ezmaintenanceplus: POV reuse_language_invoker heal failed "
+                "(settings=%s addon_xml=%s)%s"
+                % (
+                    result["settings"],
+                    result["addon_xml"],
+                    (" (%s)" % result["detail"]) if result["detail"] else "",
+                ),
+                level=xbmc.LOGWARNING,
+            )
+    except Exception as e:
+        try:
+            xbmc.log(
+                "ezmaintenanceplus: POV reuse_language_invoker heal crashed "
+                "%s: %s" % (type(e).__name__, e),
                 level=xbmc.LOGWARNING,
             )
         except Exception:
