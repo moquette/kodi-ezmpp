@@ -1,3 +1,14 @@
+v2026.09.16.2
+- AutoCompletion for the virtual keyboard no longer shows up as a tile in
+  Addons > Program add-ons. It ships as a plain script add-on, which Kodi
+  always lists there, and it was never meant to be opened by hand, only
+  used behind the scenes for keyboard suggestions. The Settings Profile
+  now checks it on every boot and switches it to the extension type Kodi
+  hides from that screen if it ever shows up as the visible kind again,
+  the same way it already does for this add-on's own installer helper.
+  The suggestion strip itself is unaffected. Nothing to do by hand, and
+  boxes without it installed are untouched.
+
 v2026.09.16.1
 - POV now keeps its interpreter-reuse setting off, every boot. On the
   current Kodi 22 nightly, POV's background sync can crash the moment it

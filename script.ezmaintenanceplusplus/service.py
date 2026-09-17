@@ -117,6 +117,7 @@ def _startup_sequence(monitor):
     _purge_stale_bytecode()
     _maybe_resume_paused_pvr()
     _maybe_fix_pov_reuse_invoker()
+    _maybe_hide_autocompletion()
     _maybe_restore_check(monitor)
     _maybe_profile_check(monitor)
 
@@ -692,6 +693,42 @@ def _maybe_fix_pov_reuse_invoker():
             xbmc.log(
                 "ezmaintenanceplus: POV reuse_language_invoker heal crashed "
                 "%s: %s" % (type(e).__name__, e),
+                level=xbmc.LOGWARNING,
+            )
+        except Exception:
+            pass
+
+
+def _maybe_hide_autocompletion():
+    """Self-heal plugin.program.autocompletion's addon.xml back to
+    xbmc.python.library every boot, so it never shows in Addons > Program
+    add-ons - see profile.ensure_autocompletion_hidden's docstring and
+    .claude/memory/project-t7b-installer-never-display.md (fleet meta repo)
+    for why this exists and why it cannot be a one-time fix. Silent when the
+    add-on is absent or already correct; logs at INFO when it heals
+    something."""
+    try:
+        from resources.lib.modules import profile as profile_mod
+
+        outcome, detail = profile_mod.ensure_autocompletion_hidden()
+        if outcome == profile_mod.APPLIED:
+            xbmc.log(
+                "ezmaintenanceplus: AutoCompletion hidden from Program "
+                "add-ons (was xbmc.python.script)%s"
+                % ((" (%s)" % detail) if detail else ""),
+                level=loglevel,
+            )
+        elif outcome == profile_mod.ERROR:
+            xbmc.log(
+                "ezmaintenanceplus: AutoCompletion hide failed%s"
+                % ((" (%s)" % detail) if detail else ""),
+                level=xbmc.LOGWARNING,
+            )
+    except Exception as e:
+        try:
+            xbmc.log(
+                "ezmaintenanceplus: AutoCompletion hide crashed %s: %s"
+                % (type(e).__name__, e),
                 level=xbmc.LOGWARNING,
             )
         except Exception:

@@ -1877,3 +1877,104 @@ def test_pov_reuse_invoker_id_absent_from_settings_is_already_correct(
     assert result["settings"] == "already-correct"
     assert result["addon_xml"] == "already-correct"
     assert rig.vectors == []
+
+
+# --------------------------------------------------------------------------- #
+# AutoCompletion hidden self-heal (profile.ensure_autocompletion_hidden)
+# --------------------------------------------------------------------------- #
+def test_autocompletion_not_installed_is_a_silent_noop(monkeypatch, tmp_path):
+    """No plugin.program.autocompletion on disk at all: nothing to heal."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    outcome, detail = rig.profile.ensure_autocompletion_hidden(log=lambda m: None)
+    assert outcome == "already-correct"
+    assert detail == "not installed"
+    assert rig.vectors == []
+
+
+def test_autocompletion_addon_xml_flips_script_to_library(monkeypatch, tmp_path):
+    """The one extension point attribute value flips; every other byte of
+    this third-party file, including the sibling pluginsource extension and
+    the <provides> tag, is left exactly as shipped."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    ac_dir = Path(
+        rig.store.translate("special://home/addons/plugin.program.autocompletion")
+    )
+    ac_dir.mkdir(parents=True, exist_ok=True)
+    seed = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<addon id="plugin.program.autocompletion" name="AutoCompletion for '
+        'virtual keyboard" version="2.1.2">\n'
+        '    <extension point="xbmc.python.script" library="default.py">\n'
+        "        <provides>executable</provides>\n"
+        "    </extension>\n"
+        '    <extension point="xbmc.python.pluginsource" library="plugin.py" />\n'
+        "</addon>\n"
+    )
+    (ac_dir / "addon.xml").write_text(seed, encoding="utf-8")
+
+    outcome, detail = rig.profile.ensure_autocompletion_hidden(log=lambda m: None)
+
+    assert outcome == "applied"
+    new_text = (ac_dir / "addon.xml").read_text(encoding="utf-8")
+    assert 'point="xbmc.python.library"' in new_text
+    assert 'library="default.py"' in new_text
+    assert "<provides>executable</provides>" in new_text
+    assert 'point="xbmc.python.pluginsource"' in new_text, (
+        "the sibling pluginsource extension must be left untouched"
+    )
+    # exactly one attribute value changed; nothing else in the file moved
+    assert new_text.replace(
+        'point="xbmc.python.library"', 'point="xbmc.python.script"', 1
+    ) == seed
+
+
+def test_autocompletion_second_run_is_already_correct_no_new_write(
+    monkeypatch, tmp_path
+):
+    """Idempotent: a second boot's heal finds the file already library and
+    writes nothing (byte-identical before/after)."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    ac_dir = Path(
+        rig.store.translate("special://home/addons/plugin.program.autocompletion")
+    )
+    ac_dir.mkdir(parents=True, exist_ok=True)
+    seed = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<addon id="plugin.program.autocompletion" version="2.1.2">\n'
+        '    <extension point="xbmc.python.script" library="default.py" />\n'
+        "</addon>\n"
+    )
+    (ac_dir / "addon.xml").write_text(seed, encoding="utf-8")
+
+    first = rig.profile.ensure_autocompletion_hidden(log=lambda m: None)
+    assert first[0] == "applied"
+    healed_text = (ac_dir / "addon.xml").read_text(encoding="utf-8")
+
+    second = rig.profile.ensure_autocompletion_hidden(log=lambda m: None)
+    assert second == ("already-correct", "")
+    assert (ac_dir / "addon.xml").read_text(encoding="utf-8") == healed_text, (
+        "a second, already-correct run must not touch the file"
+    )
+
+
+def test_autocompletion_already_library_is_left_byte_unchanged(monkeypatch, tmp_path):
+    """Already hidden: reported already-correct, file untouched byte for
+    byte."""
+    rig = _rig(monkeypatch, tmp_path, platform="tvos")
+    ac_dir = Path(
+        rig.store.translate("special://home/addons/plugin.program.autocompletion")
+    )
+    ac_dir.mkdir(parents=True, exist_ok=True)
+    seed = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<addon id="plugin.program.autocompletion" version="2.1.2">\n'
+        '    <extension point="xbmc.python.library" library="default.py" />\n'
+        "</addon>\n"
+    )
+    (ac_dir / "addon.xml").write_text(seed, encoding="utf-8")
+
+    outcome, detail = rig.profile.ensure_autocompletion_hidden(log=lambda m: None)
+
+    assert outcome == "already-correct"
+    assert detail == ""
+    assert (ac_dir / "addon.xml").read_text(encoding="utf-8") == seed

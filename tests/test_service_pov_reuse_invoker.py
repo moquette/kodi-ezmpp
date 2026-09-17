@@ -267,3 +267,82 @@ def test_startup_sequence_calls_pov_fix_between_pvr_resume_and_restore_check(env
     assert order.index("_maybe_fix_pov_reuse_invoker") < order.index(
         "_maybe_restore_check"
     )
+
+
+# --------------------------------------------------------------------------- #
+# AutoCompletion hidden self-heal wiring (service._maybe_hide_autocompletion)
+# --------------------------------------------------------------------------- #
+def _autocompletion_profile_stub(outcome, detail=""):
+    """A stand-in resources.lib.modules.profile exposing just the outcome
+    vocabulary and ensure_autocompletion_hidden the real function calls."""
+    m = types.ModuleType("resources.lib.modules.profile")
+    m.APPLIED = "applied"
+    m.ALREADY = "already-correct"
+    m.ERROR = "error"
+    m.ensure_autocompletion_hidden = lambda: (outcome, detail)
+    return m
+
+
+def test_maybe_hide_autocompletion_logs_when_healed(monkeypatch, env):
+    mod = env.load()
+    _inject_profile(monkeypatch, mod, _autocompletion_profile_stub("applied"))
+    mod._maybe_hide_autocompletion()
+    assert any(
+        "AutoCompletion" in m and "hidden" in m and level in (LOGINFO, LOGNOTICE, LOGDEBUG)
+        for level, m in env.logs
+    ), env.logs
+
+
+def test_maybe_hide_autocompletion_silent_when_already_correct(monkeypatch, env):
+    mod = env.load()
+    _inject_profile(
+        monkeypatch, mod, _autocompletion_profile_stub("already-correct")
+    )
+    mod._maybe_hide_autocompletion()
+    assert not any("AutoCompletion" in m for _level, m in env.logs), (
+        "already-correct must be silent"
+    )
+
+
+def test_maybe_hide_autocompletion_logs_warning_on_error(monkeypatch, env):
+    mod = env.load()
+    _inject_profile(
+        monkeypatch, mod, _autocompletion_profile_stub("error", detail="boom")
+    )
+    mod._maybe_hide_autocompletion()
+    assert any(
+        "AutoCompletion" in m and level == LOGWARNING for level, m in env.logs
+    ), env.logs
+
+
+def test_maybe_hide_autocompletion_never_raises_on_import_failure(monkeypatch, env):
+    mod = env.load()
+    monkeypatch.delitem(sys.modules, "resources.lib.modules.profile", raising=False)
+    mod._maybe_hide_autocompletion()  # must not raise
+    assert any(
+        "crashed" in m and level == LOGWARNING for level, m in env.logs
+    ), env.logs
+
+
+def test_startup_sequence_calls_autocompletion_hide_after_pov_fix(env):
+    svc = env.load()
+    order = []
+    for name in (
+        "_maybe_purge_stale_nsud_keys",
+        "_purge_stale_bytecode",
+        "_maybe_resume_paused_pvr",
+        "_maybe_fix_pov_reuse_invoker",
+        "_maybe_hide_autocompletion",
+        "_maybe_restore_check",
+    ):
+        setattr(svc, name, (lambda n: lambda *a, **k: order.append(n))(name))
+
+    svc._startup_sequence(_StubMon())
+
+    assert "_maybe_hide_autocompletion" in order
+    assert order.index("_maybe_fix_pov_reuse_invoker") < order.index(
+        "_maybe_hide_autocompletion"
+    )
+    assert order.index("_maybe_hide_autocompletion") < order.index(
+        "_maybe_restore_check"
+    )

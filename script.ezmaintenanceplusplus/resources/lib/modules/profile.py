@@ -120,6 +120,8 @@ OWN_ID = "script.ezmaintenanceplusplus"
 POV_ADDON_ID = "plugin.video.pov"
 POV_REUSE_INVOKER_SETTING_ID = "reuse_language_invoker"
 
+AUTOCOMPLETION_ADDON_ID = "plugin.program.autocompletion"
+
 # The three ids Kodi gates behind its own modal confirm, mapped to the core
 # localized string id of the dialog TEXT (heading is 19098, "Warning"). The
 # text match is the guard that we only ever answer KODI'S question for the id
@@ -439,6 +441,19 @@ _POV_SETTINGS_INVOKER_RE = re.compile(
 # plugin.video.pov's own addon.xml <reuselanguageinvoker> element text.
 _POV_ADDON_XML_INVOKER_RE = re.compile(
     r"(<reuselanguageinvoker>)\s*true\s*(</reuselanguageinvoker>)",
+    re.IGNORECASE,
+)
+
+# plugin.program.autocompletion's addon.xml extension point. A plain
+# xbmc.python.script has no provides value or metadata flag that hides it
+# from Addons/Programs (confirmed against the Kodi wiki 2026-09-16);
+# xbmc.python.library is one of the few points Kodi excludes from that
+# browser. This add-on's own addon.xml carries exactly one
+# point="xbmc.python.script" attribute (its second extension point is
+# xbmc.python.pluginsource, untouched), so a literal attribute-value swap is
+# unambiguous.
+_AUTOCOMPLETION_EXTENSION_POINT_RE = re.compile(
+    r'point="xbmc\.python\.script"',
     re.IGNORECASE,
 )
 
@@ -1703,6 +1718,85 @@ def _fix_pov_addon_xml_invoker(log):
     except UnicodeDecodeError as e:
         return ERROR, "addon.xml not utf-8: %s" % e
     new_text, n = _POV_ADDON_XML_INVOKER_RE.subn(r"\1false\2", text, count=1)
+    if not n:
+        return ALREADY, ""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_text)
+    except Exception as e:
+        return ERROR, "addon.xml write failed: %s" % e
+    return APPLIED, ""
+
+
+def autocompletion_installed():
+    """True iff plugin.program.autocompletion is present on disk. Same disk
+    probe as pov_installed and for the same reason: this runs from
+    service.py's boot sequence before Kodi's GUI/RPC surface is guaranteed
+    ready."""
+    try:
+        return os.path.isdir(
+            xbmcvfs.translatePath(
+                "special://home/addons/%s" % AUTOCOMPLETION_ADDON_ID
+            )
+        )
+    except Exception:
+        return False
+
+
+def ensure_autocompletion_hidden(log=None):
+    """Self-heal plugin.program.autocompletion's addon.xml extension point
+    back to xbmc.python.library on every boot, so it never shows in Addons >
+    Program add-ons. Owner-ordered 2026-09-16 ("that is never to fucking
+    display"), the same requirement already enforced for our own
+    script.t7b.installer (see .claude/memory/project-t7b-installer-never-
+    display.md in the fleet meta repo). xbmc.python.script has no provides
+    value or metadata flag that hides it; xbmc.python.library is one of the
+    few Kodi excludes from that browser. A one-time manual edit does not
+    stick against an add-on update regenerating its shipped addon.xml, the
+    same lesson already paid for on plugin.video.pov's reuse_language_invoker,
+    so this runs every boot rather than once.
+
+    Not a fork: no code inside this add-on is touched, only the single
+    extension-point attribute that governs Kodi's own browser listing.
+
+    Silent no-op when the add-on is not installed. Idempotent: a file
+    already reading xbmc.python.library is touched on no storage layer.
+    Never raises - this runs unattended at every boot."""
+    log = log or (
+        lambda msg: xbmc.log(
+            "ezmaintenanceplus: profile: %s" % msg, level=xbmc.LOGINFO
+        )
+    )
+    if not autocompletion_installed():
+        return ALREADY, "not installed"
+    return _fix_autocompletion_addon_xml(log)
+
+
+def _fix_autocompletion_addon_xml(log):
+    """The add-on's own addon.xml, under special://home/addons/ - a plain
+    POSIX file on every platform including tvOS, never shadowed by an
+    NSUserDefaults key (that mechanism only intercepts the per-profile
+    settings tree; the add-on install tree is untouched). A plain
+    read/write is therefore the correct, complete write here - no nsud
+    call belongs in this function. Flips exactly one attribute value and
+    leaves every other byte of a third-party file alone."""
+    path = xbmcvfs.translatePath(
+        "special://home/addons/%s/addon.xml" % AUTOCOMPLETION_ADDON_ID
+    )
+    if not os.path.exists(path):
+        return ALREADY, ""
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except Exception as e:
+        return ERROR, "addon.xml unreadable: %s" % e
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return ERROR, "addon.xml not utf-8: %s" % e
+    new_text, n = _AUTOCOMPLETION_EXTENSION_POINT_RE.subn(
+        'point="xbmc.python.library"', text, count=1
+    )
     if not n:
         return ALREADY, ""
     try:
