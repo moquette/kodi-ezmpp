@@ -1,3 +1,15 @@
+v2026.09.17.1
+- AutoCompletion's hide-from-Program-add-ons fix now takes effect the
+  same boot it applies, instead of needing a second restart to actually
+  disappear. Measured on office: the file was patched correctly and
+  logged as healed, but the add-on still showed in Addons > Program
+  add-ons until Kodi was restarted a second time, because Kodi's own
+  add-on scan for that session had already run before the fix landed.
+  The Settings Profile now forces that rescan itself right after a
+  successful patch, so a box only needs the one restart it was already
+  getting. Nothing else changed, and a box without AutoCompletion
+  installed is untouched.
+
 v2026.09.16.3
 - POV's Resume / Start from beginning dialog now actually resumes.
   Picking Resume asked the question and remembered the answer, but

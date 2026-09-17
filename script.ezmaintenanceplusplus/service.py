@@ -707,7 +707,19 @@ def _maybe_hide_autocompletion():
     .claude/memory/project-t7b-installer-never-display.md (fleet meta repo)
     for why this exists and why it cannot be a one-time fix. Silent when the
     add-on is absent or already correct; logs at INFO when it heals
-    something."""
+    something.
+
+    Patching the file alone is NOT enough within the same boot: Kodi's own
+    addon database scan already ran, earlier in this same startup, before
+    this function had a chance to fix the file, so Addons.GetAddons keeps
+    reporting the stale xbmc.python.script type until something forces a
+    re-scan. MEASURED on office 2026-09-17: the file patched correctly on
+    boot N and logged APPLIED, but Addons.GetAddons still listed it as
+    xbmc.python.script until a SECOND full restart. A disable/enable cycle
+    right after a successful patch forces that re-scan immediately, so the
+    fix is live within the SAME boot instead of silently waiting on
+    whichever restart happens to come next, which on a real TV can be
+    days."""
     try:
         from resources.lib.modules import profile as profile_mod
 
@@ -718,6 +730,14 @@ def _maybe_hide_autocompletion():
                 "add-ons (was xbmc.python.script)%s"
                 % ((" (%s)" % detail) if detail else ""),
                 level=loglevel,
+            )
+            _jsonrpc_service(
+                "Addons.SetAddonEnabled",
+                {"addonid": profile_mod.AUTOCOMPLETION_ADDON_ID, "enabled": False},
+            )
+            _jsonrpc_service(
+                "Addons.SetAddonEnabled",
+                {"addonid": profile_mod.AUTOCOMPLETION_ADDON_ID, "enabled": True},
             )
         elif outcome == profile_mod.ERROR:
             xbmc.log(

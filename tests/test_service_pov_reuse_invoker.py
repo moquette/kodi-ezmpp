@@ -22,6 +22,7 @@ real function.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -279,6 +280,7 @@ def _autocompletion_profile_stub(outcome, detail=""):
     m.APPLIED = "applied"
     m.ALREADY = "already-correct"
     m.ERROR = "error"
+    m.AUTOCOMPLETION_ADDON_ID = "plugin.program.autocompletion"
     m.ensure_autocompletion_hidden = lambda: (outcome, detail)
     return m
 
@@ -291,6 +293,53 @@ def test_maybe_hide_autocompletion_logs_when_healed(monkeypatch, env):
         "AutoCompletion" in m and "hidden" in m and level in (LOGINFO, LOGNOTICE, LOGDEBUG)
         for level, m in env.logs
     ), env.logs
+
+
+def test_maybe_hide_autocompletion_forces_a_rescan_after_a_successful_patch(
+    monkeypatch, env
+):
+    """The file patch alone is not enough within the same boot (Kodi's own
+    addon scan already ran before this function got to fix the file,
+    MEASURED on office 2026-09-17: still xbmc.python.script after the patch
+    logged APPLIED, needing a second full restart). A disable/enable cycle
+    right after a successful patch must force that rescan immediately."""
+    mod = env.load()
+    _inject_profile(monkeypatch, mod, _autocompletion_profile_stub("applied"))
+    calls = []
+    mod.xbmc.executeJSONRPC = lambda payload: calls.append(
+        json.loads(payload)
+    ) or '{"result": "OK"}'
+
+    mod._maybe_hide_autocompletion()
+
+    methods = [c["method"] for c in calls]
+    assert methods.count("Addons.SetAddonEnabled") == 2
+    enable_calls = [c for c in calls if c["method"] == "Addons.SetAddonEnabled"]
+    assert enable_calls[0]["params"] == {
+        "addonid": "plugin.program.autocompletion",
+        "enabled": False,
+    }
+    assert enable_calls[1]["params"] == {
+        "addonid": "plugin.program.autocompletion",
+        "enabled": True,
+    }
+
+
+def test_maybe_hide_autocompletion_does_not_rescan_when_already_correct(
+    monkeypatch, env
+):
+    mod = env.load()
+    _inject_profile(
+        monkeypatch, mod, _autocompletion_profile_stub("already-correct")
+    )
+    calls = []
+    mod.xbmc.executeJSONRPC = lambda payload: calls.append(
+        json.loads(payload)
+    ) or '{"result": "OK"}'
+
+    mod._maybe_hide_autocompletion()
+
+    assert calls == [], "an already-correct run must not touch any add-on state"
 
 
 def test_maybe_hide_autocompletion_silent_when_already_correct(monkeypatch, env):
