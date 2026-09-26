@@ -25,7 +25,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       # Versions live in requirements-ci.txt. See that file for why they are
       # pinned at all.
@@ -138,7 +138,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       # A PLAIN build, deliberately. `--check` builds twice into temp dirs and
       # byte-compares, and leaves NOTHING in dist/, so using it here breaks the
