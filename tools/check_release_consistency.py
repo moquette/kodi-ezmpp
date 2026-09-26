@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
-"""Release-existence / version-regression gate for EZ Maintenance++ (GAP 2).
+"""Release-existence / version-regression gate for EZ Maintenance++.
 
 WHY THIS EXISTS
 ---------------
-The Tony.7.Bones proxy repo (tony7bones.github.io) has `_tools/check_consistency.py`,
-which fails CI if addon.xml's version, the released zip, and the git tag disagree - and
-it caught a real bumped-but-unreleased slip in that repo. This repo (the single source
-of truth for EZ Maintenance++ since 2026-07-14) had no equivalent: a bumped-but-never-
-released `script.ezmaintenanceplusplus/addon.xml` could sit on `main` indefinitely with
-no signal, and the proxy's hand-synced hosted metadata mirror would have nothing to
-catch it either.
+This repo is the single source of truth for the add-on, and CI publishes it: on
+every push to `main` the `publish` job in .github/workflows/ci.yml builds the
+deterministic zip and, when no tag `v<version>` exists for addon.xml's version,
+creates the GitHub Release with the zip attached, verifies the asset, and
+dispatches the hub (tony7bones.github.io), whose Pages build resolves this repo's
+latest release and serves it from /static/. `tools/release.sh` is the offline
+re-cut of that same step, anchored to origin/main, and refuses when the tag
+exists. The hub keeps no copy of this add-on and has no consistency check of its
+own any more (its `_tools/check_consistency.py` and the hosted metadata mirror it
+policed are gone), so this gate is the only thing that notices when `main` and
+the published releases disagree.
 
-DESIGN CONSTRAINT (do not "fix" this by reverting it)
-------------------------------------------------------
-`tools/release.sh` anchors its tag to `origin/main`, and the release flow is:
+WHAT IT MUST NOT DO
+-------------------
+Between `test` going green and `publish` finishing, or on any pull request, `main`
+LEGITIMATELY carries an addon.xml version with no matching release: that is the
+version the next publish step is about to cut. A naive "addon.xml's version must
+have a release" check would red every such run, which is exactly the kind of
+gate this project's house rules forbid ("if a gate you add would red CI on the
+current clean tree, it's mis-designed"). tools/check_unreleased_changes.py covers
+the opposite slip (source moved at an already-released version) as a warning.
 
-    1. bump script.ezmaintenanceplusplus/addon.xml, commit, push to main
-    2. run tools/release.sh, which builds, tags v<version>, publishes the GitHub
-       Release asset, and verifies the asset is live and byte-correct
-
-So `main` LEGITIMATELY carries an addon.xml version with no matching release for the
-entire window between steps 1 and 2 - that can be minutes or days. A naive "addon.xml
-version must have a matching release" check would false-fail on every push in that
-window, which is exactly the kind of gate this project's house rules forbid ("if a gate
-you add would red CI on the current clean tree, it's mis-designed").
-
-So this gate only fails on a REGRESSION or a real CONTRADICTION - never merely because
-addon.xml is ahead of the latest release (that is the normal, legitimate pending state):
+So this gate only fails on a REGRESSION or a real CONTRADICTION, never merely
+because addon.xml is ahead of the latest release:
 
   - REGRESSION: addon.xml's version is LOWER than the latest published release's
     version. main must never carry a version older than something already shipped.

@@ -20,6 +20,7 @@ import xbmcvfs
 import os
 import re
 from resources.lib.modules.backtothefuture import unicode, PY2
+from resources.lib.modules import addon_id as _addon_id
 from resources.lib.modules import ui
 from resources.lib.modules._kodisettings import KODI_DEFAULT_CACHE_MB
 
@@ -32,7 +33,7 @@ dialog = xbmcgui.Dialog()
 addonInfo = xbmcaddon.Addon().getAddonInfo
 
 AddonTitle = "EZ Maintenance++"
-AddonID = "script.ezmaintenanceplusplus"
+AddonID = _addon_id.get()
 
 
 ADV_XML = "special://home/userdata/advancedsettings.xml"
@@ -428,7 +429,7 @@ def advancedSettings():
 # add-on's own addon_data, which the wipe preserves and the extract precedes.
 # --------------------------------------------------------------------------- #
 RESTORE_CHECK_MARKER = translatePath(
-    "special://home/userdata/addon_data/script.ezmaintenanceplusplus/.ezm_restore_check"
+    "special://home/userdata/addon_data/%s/.ezm_restore_check" % AddonID
 )
 
 
@@ -506,7 +507,7 @@ def clear_restore_check_marker():
 # pause can never strand the IPTV client past the next launch.
 # --------------------------------------------------------------------------- #
 PVR_PAUSE_MARKER = translatePath(
-    "special://home/userdata/addon_data/script.ezmaintenanceplusplus/.ezm_pvr_paused"
+    "special://home/userdata/addon_data/%s/.ezm_pvr_paused" % AddonID
 )
 
 
@@ -566,7 +567,7 @@ def clear_pvr_pause_marker():
 # per the plan, rather than fixing those here.)
 # --------------------------------------------------------------------------- #
 PROFILE_CHECK_MARKER = translatePath(
-    "special://home/userdata/addon_data/script.ezmaintenanceplusplus/.ezm_profile_check"
+    "special://home/userdata/addon_data/%s/.ezm_profile_check" % AddonID
 )
 
 

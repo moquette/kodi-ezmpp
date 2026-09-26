@@ -20,13 +20,14 @@ import xbmcvfs
 import os
 from resources.lib.modules import control
 from resources.lib.modules.backtothefuture import unicode
+from resources.lib.modules import addon_id as _addon_id
 
 dp = xbmcgui.DialogProgress()
 dialog = xbmcgui.Dialog()
 addonInfo = xbmcaddon.Addon().getAddonInfo
 
 AddonTitle = "EZ Maintenance++"
-AddonID = "script.ezmaintenanceplusplus"
+AddonID = _addon_id.get()
 
 
 def logView():

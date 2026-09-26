@@ -922,7 +922,10 @@ def _rig(monkeypatch, tmp_path, platform="tvos", answer_dialogs=True):
         monkeypatch, xbmc_mod=xbmc_mod, xbmcvfs_mod=xbmcvfs_mod,
         addon_settings=own_settings,
     )
-    monkeypatch.setattr(profile, "_CONFIRM_TIMEOUT_S", 2.0)
+    # 0.1 s is enough: the unanswered-confirm test exercises the deadline, the
+    # dialog close and the worker's refusal identically at 2.0 and 0.1 (measured
+    # 2026-09-26, same outcome and detail), and 2.0 made it the slowest test.
+    monkeypatch.setattr(profile, "_CONFIRM_TIMEOUT_S", 0.1)
     monkeypatch.setattr(profile, "_ENABLE_POLL_S", 1.0)
     monkeypatch.setattr(profile, "_REFRESH_POLL_S", 1.0)
 

@@ -10,6 +10,7 @@ import math
 import time
 import shutil
 from resources.lib.modules.backtothefuture import PY2
+from resources.lib.modules import addon_id as _addon_id
 from resources.lib.modules import ui
 
 # Code to map the old translatePath
@@ -31,7 +32,7 @@ THUMBS = translatePath(os.path.join("special://home/userdata/Thumbnails", ""))
 # disagrees with it would run maintenance at an hour the user was never shown.
 DEFAULT_AUTOCLEAN_HOUR = 4
 
-addon_id = "script.ezmaintenanceplusplus"
+addon_id = _addon_id.get()
 fanart = translatePath(os.path.join("special://home/addons/" + addon_id, "fanart.jpg"))
 iconpath = translatePath(os.path.join("special://home/addons/" + addon_id, "icon.png"))
 

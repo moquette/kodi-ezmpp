@@ -44,8 +44,9 @@ import gzip
 import os
 
 import xbmcvfs
+from resources.lib.modules import addon_id as _addon_id
 
-ADDON_ID = "script.ezmaintenanceplusplus"
+ADDON_ID = _addon_id.get()
 
 # userdata-relative tail (forward-slash) this capture must NEVER embed: the add-on's own
 # settings.xml carries the SOURCE box's download/restore paths AND its dropbox_refresh_token

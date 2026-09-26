@@ -26,6 +26,7 @@ import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcvfs
+from resources.lib.modules import addon_id as _addon_id
 
 # Backup filenames carry a trailing _YYYYMMDDHHMM stamp before ".zip"
 # (the 12-digit datetime EZ Maintenance++ appends at backup time).
@@ -74,7 +75,7 @@ TIMEOUT = (10, 180)
 # resuming the same chunk rather than restarting the whole upload.
 MAX_TRIES = 8
 
-AddonID = "script.ezmaintenanceplusplus"
+AddonID = _addon_id.get()
 AddonTitle = "EZ Maintenance++"
 
 _addon = xbmcaddon.Addon(id=AddonID)

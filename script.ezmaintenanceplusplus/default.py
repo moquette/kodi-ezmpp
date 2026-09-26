@@ -7,6 +7,7 @@ import sys
 import time
 from resources.lib.modules import control, ui
 from resources.lib.modules.backtothefuture import PY2
+from resources.lib.modules import addon_id as _addon_id
 from resources.lib.modules import maintenance
 
 # Explicit submodule imports: a bare `import urllib` does NOT expose
@@ -22,7 +23,7 @@ else:
 
     translatePath = xbmcvfs.translatePath
 
-AddonID = "script.ezmaintenanceplusplus"
+AddonID = _addon_id.get()
 
 # ICONS FANARTS
 ADDON_FANART = control.addonFanart()
@@ -983,7 +984,7 @@ if PY2:
 else:
     from urllib.parse import parse_qsl
 
-# RunScript(script.ezmaintenanceplusplus,authorize) / (...,dbtest) arrive as a bare
+# RunScript(<addon id>,authorize) / (...,dbtest) arrive as a bare
 # positional arg in sys.argv[1], NOT as the plugin "?action=" querystring. Route those
 # first and exit, before the normal plugin parsing (which assumes sys.argv[2] is a qs).
 _script_arg = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -1168,7 +1169,7 @@ elif action == "backup_restore":
 
 elif action == "speedtest":
     xbmc.executebuiltin(
-        'Runscript("special://home/addons/script.ezmaintenanceplusplus/resources/lib/modules/speedtest.py")'
+        'Runscript("special://home/addons/%s/resources/lib/modules/speedtest.py")' % AddonID
     )
 
 elif action == "authorize":

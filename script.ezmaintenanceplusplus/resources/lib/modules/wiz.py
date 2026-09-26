@@ -25,6 +25,7 @@ import zipfile
 from resources.lib.modules import control, maintenance, tools, ui, versiongate
 from datetime import datetime
 from resources.lib.modules.backtothefuture import unicode, PY2
+from resources.lib.modules import addon_id as _addon_id
 
 if PY2:
     from io import open as open
@@ -38,7 +39,7 @@ dialog = xbmcgui.Dialog()
 addonInfo = xbmcaddon.Addon().getAddonInfo
 
 AddonTitle = "EZ Maintenance++"
-AddonID = "script.ezmaintenanceplusplus"
+AddonID = _addon_id.get()
 
 
 # VfsCopyError now lives in ui.py (one definition for the whole add-on); alias it here so

@@ -6,6 +6,7 @@ import os
 import xbmcvfs
 import time
 from resources.lib.modules.backtothefuture import PY2
+from resources.lib.modules import addon_id as _addon_id
 from resources.lib.modules import maintenance
 
 # Code to map the old translatePath
@@ -16,7 +17,7 @@ else:
     translatePath = xbmcvfs.translatePath
     loglevel = xbmc.LOGINFO
 
-AddonID = "script.ezmaintenanceplusplus"
+AddonID = _addon_id.get()
 packagesdir = translatePath(os.path.join("special://home/addons/packages", ""))
 thumbnails = translatePath("special://home/userdata/Thumbnails")
 iconpath = translatePath(os.path.join("special://home/addons/" + AddonID, "icon.png"))

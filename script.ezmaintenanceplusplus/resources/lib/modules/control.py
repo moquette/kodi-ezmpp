@@ -15,6 +15,7 @@ import xbmcaddon
 import xbmcgui
 import xbmcvfs
 from resources.lib.modules.backtothefuture import PY2
+from resources.lib.modules import addon_id as _addon_id
 from resources.lib.modules import ui
 
 
@@ -35,7 +36,7 @@ if PY2:
 else:
     translatePath = xbmcvfs.translatePath
 
-AddonID = "script.ezmaintenanceplusplus"
+AddonID = _addon_id.get()
 # DIRECTORIES
 USERDATA = translatePath(os.path.join("special://home/userdata", ""))
 HOME = translatePath("special://home/")

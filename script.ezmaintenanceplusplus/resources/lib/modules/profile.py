@@ -112,10 +112,11 @@ import xbmcaddon
 import xbmcvfs
 
 from resources.lib.modules import _kodisettings, nsud
+from resources.lib.modules import addon_id as _addon_id
 
 SCHEMA_VERSION = 1
 DEVICE_CLASSES = ("fireos", "tvos", "androidtv", "bench")
-OWN_ID = "script.ezmaintenanceplusplus"
+OWN_ID = _addon_id.get()
 
 POV_ADDON_ID = "plugin.video.pov"
 POV_REUSE_INVOKER_SETTING_ID = "reuse_language_invoker"

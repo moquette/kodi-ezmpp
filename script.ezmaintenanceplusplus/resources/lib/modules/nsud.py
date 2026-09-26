@@ -34,8 +34,9 @@ import os
 import re
 
 import xbmcvfs
+from resources.lib.modules import addon_id as _addon_id
 
-ADDON_ID = "script.ezmaintenanceplusplus"
+ADDON_ID = _addon_id.get()
 
 # Files (relative to userdata/, forward-slash) the general walk must NOT re-vector.
 DEFAULT_EXCLUDES = (

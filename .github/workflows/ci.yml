@@ -54,14 +54,15 @@ jobs:
       - name: Lint (tests + tooling)
         run: ruff check tests/ tools/
 
-      # Deliberately a WARNING, never a failure. The publish job is idempotent by
-      # tag: if the tag for the current version already exists it prints "nothing
-      # to publish" and exits 0, so a fix committed without bumping addon.xml
-      # reaches zero boxes with nothing red anywhere (2026-07-25 audit). This
-      # makes that state loud. It does NOT block, because batching several
-      # commits into one later release is the normal workflow here and a gate
-      # that fought it would just get bypassed. tools/release.sh is the hard
-      # block: it refuses outright when the tag already exists.
+      # Deliberately a WARNING, never a failure. Releasing is a version bump:
+      # the publish job below cuts the release the first time it sees a version
+      # with no tag, and is a no-op by tag after that. So a fix committed without
+      # bumping addon.xml tests green, publishes nothing, reaches zero boxes and
+      # goes red nowhere (2026-07-25 audit). This makes that state loud. It does
+      # NOT block, because batching several commits into one later release is
+      # the normal workflow here and a gate that fought it would just get
+      # bypassed. tools/release.sh, the offline re-cut, is the hard block: it
+      # refuses outright when the tag already exists.
       - name: Unreleased-changes check (warning only)
         run: |
           python3 tools/check_unreleased_changes.py | tee /tmp/unreleased.txt
@@ -77,14 +78,16 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # GAP 2 (2026-07-14): queries this repo's own GitHub Releases and only fails on a
-      # REGRESSION (addon.xml behind the latest published release) or a CONTRADICTION (a
-      # release tag matching addon.xml exists with a missing/mismatched asset) - never
-      # merely because addon.xml is ahead of the latest release, which is the normal,
-      # legitimate state between "bump addon.xml + push" and running tools/release.sh
-      # (see that script's header and tools/check_release_consistency.py's docstring for
-      # why a naive gate here would be mis-designed). A network failure degrades to a
-      # warning, not a gate failure - see that module's "NETWORK POSTURE" section.
+      # Queries this repo's own GitHub Releases and only fails on a REGRESSION
+      # (addon.xml behind the latest published release) or a CONTRADICTION (a
+      # release tag matching addon.xml exists with a missing/mismatched asset),
+      # never merely because addon.xml is ahead of the latest release: on a push
+      # that bumps the version this job runs BEFORE the publish job cuts it, and
+      # on a pull request nothing publishes at all, so "ahead" is the normal
+      # state here. This is the only such check left in the pipeline; the hub
+      # keeps no copy of this add-on and its own consistency gate is gone. A
+      # network failure degrades to a warning, not a gate failure - see the
+      # "NETWORK POSTURE" section of tools/check_release_consistency.py.
       - name: Release existence gate (regression / contradiction only)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

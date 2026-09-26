@@ -20,6 +20,7 @@ Imports only xbmc / xbmcaddon / xbmcvfs, so the engine is fully unit-testable of
 import xbmc
 import xbmcaddon
 import xbmcvfs
+from resources.lib.modules import addon_id as _addon_id
 
 
 def _log(msg):
@@ -47,7 +48,7 @@ def infer_type(filename):
 # deps, temp/, and any caller-specified keep set. Two layers on tvOS (POSIX files +
 # NSUserDefaults keys); a strict POSIX-only pass everywhere else.
 # --------------------------------------------------------------------------- #
-_ADDON_ID = "script.ezmaintenanceplusplus"
+_ADDON_ID = _addon_id.get()
 
 
 def _wipe_excludes():

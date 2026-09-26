@@ -1,3 +1,13 @@
+v2026.09.26.4
+- Internal restructuring so parts of the add-on can be reused
+  elsewhere: the add-on's own name, which a dozen of its modules each
+  carried a copy of, now lives in one place and every module reads it
+  from there, so a piece of this add-on can be lifted into another one
+  later without a hand edit in every file. Nothing a user sees
+  changes: menus, settings, the hourly repository check, backups and
+  restores all behave exactly as they did, and no backup or restore
+  code was touched.
+
 v2026.09.26.3
 - The repository-check setting's label now really fits its row: the
   previous release shortened it, but not enough, so on the box it
