@@ -43,19 +43,17 @@ status; `CLAUDE.md` carries the short version at the top.
   DETERMINISTIC zip (sorted members, fixed 1980-01-01 timestamps).
   `./build.sh --check` builds twice and
   byte-compares.
-- Release: `tools/release.sh` builds, tags `v<version>`, publishes the zip as a
-  GitHub Release asset on `moquette/ezmaintenanceplusplus` via `gh release create`,
-  then verifies the asset is anonymously downloadable and its sha256 matches the
-  local build (refuses to leave a broken release in place). `tools/release.sh
-  --dry-run` shows the plan without tagging/releasing.
-- Distribution: `tony7bones.github.io` carries only a metadata pointer at
-  `addons/hosted/script.ezmaintenanceplusplus/` (addon.xml + icon.png + fanart.jpg,
-  hand-synced to the released version)
-  and its `repository.json` entry's `assets.zip` points at this repo's release asset
-  URL. After cutting a release here, bump that hosted `addon.xml`'s version in
-  `tony7bones.github.io` and ship it via `python3 _tools/release.py --proxy` (it is a
-  proxy-config change, not a first-party add-on source change - `repository.json` is
-  bundled inside the `repository.tony7bones` add-on's own zip).
+- Release: a version bump pushed to `main` IS the release. CI
+  (`.github/workflows/ci.yml`, `publish` job) builds, tags `v<version>`, publishes
+  the zip as a GitHub Release asset on `moquette/kodi-ezmpp`, verifies the asset's
+  sha256, and dispatches the hub. `tools/release.sh` is the manual re-cut only
+  (`--dry-run` shows the plan); it refuses when the tag exists.
+- Distribution (since 2026-09-26): `tony7bones.github.io` carries NO copy of this
+  add-on. Its `_tools/catalog.json` entry is a `release-asset` template and its Pages
+  build resolves this repo's latest release on every run, taking `addon.xml` and art
+  out of the zip. The old hosted metadata pointer
+  (`addons/hosted/script.ezmaintenanceplusplus/`), the hand bump after each release,
+  and the `release.py --proxy` step are all gone; releasing IS publishing.
 - Tests: `cd ~/Code/moquette/kodi/ezmpp && /opt/homebrew/bin/python3 -m
   pytest tests/ -q` (system `python3` on this machine is 3.9, too old for this suite).
   `ruff check tests/ tools/` must also be clean.

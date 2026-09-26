@@ -4,17 +4,18 @@ A fork of **EZ Maintenance+** (by aenema, peno) that makes Backup and Restore wo
 over Kodi's VFS, so the **Backup Location** and **Restore** folder can point straight
 at a network share (`nfs://`, `smb://`) or any other VFS path, not just local storage.
 
-**This repo (`moquette/ezmaintenanceplusplus`, public) is the single source of truth
+**This repo (`moquette/kodi-ezmpp`, public) is the single source of truth
 for EZ Maintenance++:** the add-on source, its full test suite, and the build/release
 tooling all live here and only here. It used to be hand-synced with a second copy of
-the source in the Tony.7.Bones proxy repo (`tony7bones.github.io`), which drifted -
+the source in the Tony.7.Bones repo (`tony7bones.github.io`), which drifted -
 fixes landed in one copy without traveling to the other. That duplication is gone
-(2026-07-14): the proxy repo now carries only a hosted metadata mirror
-(`addons/hosted/script.ezmaintenanceplusplus/` - `addon.xml` + icon + fanart, no
-source) and points its `repository.json` at this repo's GitHub Release assets: the
-"own repo + release asset" pattern. Fix bugs and add tests here; only bump the hosted metadata and
-re-release the proxy over there. Triage guide for backup/restore failures:
-`~/Code/moquette/kodi/.claude/skills/ezm-backup-doctor/SKILL.md`.
+(2026-07-14), and since 2026-09-26 so is the hand-bumped metadata mirror that
+replaced it: the Tony.7.Bones repo carries NO copy of this add-on and resolves
+its latest GitHub Release at build time. Fix bugs and add tests here; a version
+bump pushed to `main` is the release, and releasing IS publishing. Triage guide
+for backup/restore failures on tvOS:
+`~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md` (the old
+`ezm-backup-doctor` skill was deleted 2026-07-21).
 
 ## Why this fork exists
 
@@ -142,11 +143,13 @@ downloadable and its sha256 matches the local build** - a release that fails
 verification is treated as a release that would ship broken bytes to a live box, so it
 is a hard failure, not a warning.
 
-After cutting a release here, the Tony.7.Bones proxy repo's hosted metadata mirror
-(`addons/hosted/script.ezmaintenanceplusplus/addon.xml`) needs its version bumped to
-match and a proxy release (`python3 _tools/release.py --proxy`) to actually ship it -
-see that repo's `CLAUDE.md` and `~/Code/moquette/kodi/.claude/skills/ezm-backup-doctor/SKILL.md` for the
-exact steps and the current gap between "committed" and "released" if one exists.
+`tools/release.sh` is the manual re-cut. The normal path needs no human on the
+release step: CI (`.github/workflows/ci.yml`) publishes `v<version>` on the first
+push to `main` that carries a new version, verifies the asset, and dispatches the
+Tony.7.Bones repo, whose Pages build resolves the latest release and serves it
+under `/static/` (since 2026-09-26; there is no hosted metadata to bump there
+any more). A box picks it up on its next Check for updates. Confirm a release
+went live with `~/Code/moquette/kodi/.claude/skills/update/SKILL.md` section 1.
 
 ## Install / use it with a network share
 

@@ -106,18 +106,22 @@ owner decision about credentials stored in cleartext inside the backup zips.
 
 **EZ Maintenance++** (`script.ezmaintenanceplusplus`) is a fork of EZ Maintenance+
 (aenema, peno) for the Tony.7.Bones Kodi 21 "Omega" fleet (5 Fire TV boxes + 2 Apple
-TVs). This repo (`moquette/ezmaintenanceplusplus`, public) is the **single source of
+TVs). This repo (`moquette/kodi-ezmpp`, public) is the **single source of
 truth**: the add-on source, its full test suite, and the build/release tooling live
 here and only here.
 
 **Distribution stays in the sibling repo** (remote
 `tony7bones/tony7bones.github.io`, local checkout `~/Code/moquette/kodi/repo`;
 the standalone `~/Code/moquette/tony7bones.github.io` path older docs cite DOES
-NOT EXIST). This repo publishes a GitHub Release asset via `tools/release.sh`;
-the hub carries only a metadata mirror
-(`addons/hosted/script.ezmaintenanceplusplus/` - `addon.xml` + icon + fanart, no
-source) plus a `_tools/catalog.json` entry whose `assets.zip` template points
-boxes at that release asset.
+NOT EXIST). A version bump pushed to `main` here IS the release: CI
+(`.github/workflows/ci.yml`, `publish` job) builds the deterministic zip,
+publishes it as the GitHub Release `v<version>`, verifies the asset's sha256,
+and dispatches the hub (`repository_dispatch` type `ezmpp-release`, with the
+`T7B_DISPATCH_TOKEN` secret). The hub carries NO copy of this add-on, not even
+`addon.xml` (since 2026-09-26): its `_tools/catalog.json` entry is a
+`release-asset` template and its Pages build resolves `releases/latest` on
+every run, taking `addon.xml` and art out of the zip. The old
+`addons/hosted/script.ezmaintenanceplusplus/` mirror is deleted.
 There is no virtual proxy and no `repository.json` left in the hub; both
 belonged to the retired dynamic-proxy design.
 
@@ -133,7 +137,7 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
   `generate_repo.py` and the skin repo's `build_skin.py`. `./build.sh --check` builds
   twice and byte-compares.
 - **Tests are mandatory before any release.** Run
-  `/opt/homebrew/bin/python3 -m pytest tests/ -q` (769 tests + 3 xfail; the
+  `/opt/homebrew/bin/python3 -m pytest tests/ -q` (818 tests + 3 xfail, measured 2026-09-26; the
   system `python3` on this machine is 3.9, too old for this suite), and
   `ruff check tests/ tools/` must also be clean.
 - **Tool versions are pinned in `requirements-ci.txt` and `ruff.toml`**, which CI
@@ -151,19 +155,24 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
   reaches zero boxes and goes red nowhere. It is a warning by design, because
   batching several commits into one later release is the normal workflow here.
   `tools/release.sh` is the hard block; it refuses outright when the tag exists.
-- **`tools/release.sh` is the only sanctioned release path.** It builds, tags
-  `v<version>` anchored to `origin/main` (never local/unpushed work - a release can
-  never smuggle out unreviewed changes), publishes the zip as a GitHub Release asset
-  via `gh release create`, then verifies the asset is anonymously downloadable and
-  its sha256 matches the local build. A release that fails verification is a hard
-  failure, not a warning.
-- **Releasing here reaches no box.** The hub needs a follow-up commit: bump BOTH
-  the version attribute and the news line in
-  `repo/addons/hosted/script.ezmaintenanceplusplus/addon.xml`, then push. CI
-  rebuilds `/static/`, which is what boxes actually read. The
-  `python3 _tools/release.py --proxy` older text here named NO LONGER EXISTS; that
-  mode went with the proxy engine. The hub's `check_hosted_release_sync.py` catches
-  a forgotten bump, but only once the release is more than two hours old.
+- **CI publishes the release; `tools/release.sh` is the manual re-cut only.**
+  The `publish` job in `ci.yml` runs on every push to `main` after `test` is
+  green: it builds, and if the tag `v<version>` for `addon.xml`'s version does
+  not exist it creates the GitHub Release with the zip attached (`--target` the
+  pushed SHA), verifies the asset is anonymously downloadable and its sha256
+  matches the CI build, then dispatches the hub. Idempotent by tag. `tools/release.sh`
+  does the same by hand, anchored to `origin/main` (never local/unpushed work),
+  and refuses outright when the tag exists. Never `gh release create` by hand.
+- **Releasing here IS publishing (since 2026-09-26).** The hub needs NO commit:
+  the dispatch (or its daily cron) makes `pages.yml` resolve the latest release
+  and rebuild `/static/`, which is what boxes actually read; a box picks the
+  version up on its next Check for updates. The old follow-up (bump the version
+  and news line in `repo/addons/hosted/script.ezmaintenanceplusplus/addon.xml`)
+  is GONE with that directory, as is the hub's `check_hosted_release_sync.py`
+  gate that policed it; the `python3 _tools/release.py --proxy` mode went with
+  the proxy engine before that. If `/static/` is behind a green release, read
+  the hub's latest "Build & Deploy Pages" run for a `::warning::` and a `stale`
+  entry; never commit a copy of `addon.xml` to the hub.
 - **This add-on's changelog is hand-written, multi-line prose** (`changelog.txt` +
   the `<news>` block in `addon.xml`) - NOT the one-line convention the proxy repo's
   `release.py` automation expects. Never run that automation against this add-on's
@@ -302,7 +311,8 @@ two-layer wipe and the purge exist BECAUSE of those facts.
   archive-contents inspection when backup/restore code changes); CI green before
   deploy; skins install from the Kodi repo, never adb/devicectl push.
 - No AI attribution anywhere; no em dashes in written deliverables.
-- Never edit `repo/addons/script.ezmaintenanceplusplus/`. That directory is gone
-  (the source copy in 2026-07-14, the code-less shim that remained in `08d9a3d`
-  on 2026-07-20) and nothing reads it. The path boxes read is
-  `repo/addons/hosted/script.ezmaintenanceplusplus/`.
+- Never create anything for this add-on under `repo/addons/`. The source copy
+  went 2026-07-14, the code-less shim `repo/addons/script.ezmaintenanceplusplus/`
+  in `08d9a3d` on 2026-07-20, and the metadata mirror
+  `repo/addons/hosted/script.ezmaintenanceplusplus/` on 2026-09-26. Boxes read
+  `/static/`, which the hub builds from this repo's latest release.
