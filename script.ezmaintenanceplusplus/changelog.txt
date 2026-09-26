@@ -1,3 +1,14 @@
+v2026.09.26.2
+- The new repository-check setting's label now fits its row. On the
+  box it read "Check the repository for updates every N minutes (0 is
+  off, 15 minimum)", too long for the settings dialog, so Kodi slid it
+  sideways whenever the row was highlighted, the same thing the backup
+  folder rows used to do. It is now "Check repository for updates
+  every N minutes (0 is off)"; the slider itself only offers 0, 15, 30
+  and so on, so the 15 minute floor needs no words. Nothing else
+  changed: the hourly check, the default of 60 and the value you may
+  have set all stay exactly as they were.
+
 v2026.09.26.1
 - The box now checks the Tony.7.Bones repository for updates on its
   own, every hour, so a new release reaches it within the hour instead
