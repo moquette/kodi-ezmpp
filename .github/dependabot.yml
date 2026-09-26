@@ -1,0 +1,18 @@
+# Dependabot keeps the GitHub Actions this repo runs on current. Every action
+# bump today (2026-09-26: checkout, setup-python, cache, artifact, Pages) was
+# done by hand after a deprecation warning; from here Dependabot opens a pull
+# request when an action releases and CI proves it before anyone merges.
+#
+# Only the actions ecosystem. The Python tool pins in requirements-ci.txt stay
+# hand-bumped on purpose: a ruff bump must land together with ruff.toml
+# required-version and whatever the new version flags, which a bot PR cannot do.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns: ["*"]

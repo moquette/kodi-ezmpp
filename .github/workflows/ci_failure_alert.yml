@@ -1,0 +1,62 @@
+# A red run that nobody hears is not a gate. This is the same alert the hub
+# runs (tony7bones/tony7bones.github.io, ci_failure_alert.yml): a failed run
+# of the CI or hub-notify workflow opens a GitHub issue assigned to the owner (assignment sends an email
+# and a GitHub notification), one issue per workflow, commented on while it
+# keeps failing, and closed by the next green run of the same workflow.
+# Added 2026-09-26, after the first skin release's hub dispatch failed
+# silently and only a watching session noticed.
+
+name: Alert on CI failure
+
+on:
+  workflow_run:
+    workflows: ["CI", "Notify hub of release"]
+    types: [completed]
+
+permissions:
+  issues: write
+
+jobs:
+  alert:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      WORKFLOW: ${{ github.event.workflow_run.name }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      EVENT: ${{ github.event.workflow_run.event }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      ASSIGNEE: moquette
+    steps:
+      - name: Open, update or close the alert issue
+        run: |
+          set -euo pipefail
+          TITLE="CI failing: ${WORKFLOW}"
+          EXISTING=$(gh issue list -R "$REPO" --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          case "$CONCLUSION" in
+            failure|timed_out)
+              LINE="Run ${RUN_URL} (${EVENT}, ${SHA:0:7}) finished: ${CONCLUSION}."
+              if [ -n "$EXISTING" ]; then
+                gh issue comment "$EXISTING" -R "$REPO" --body "$LINE"
+                echo "commented on #$EXISTING"
+              else
+                gh issue create -R "$REPO" --title "$TITLE" --assignee "$ASSIGNEE" \
+                  --body "$LINE"$'\n\n'"Opened automatically by the CI failure alert. It stays open, with one comment per further failure, until the next green run of this workflow closes it."
+                echo "opened a new issue"
+              fi
+              ;;
+            success)
+              if [ -n "$EXISTING" ]; then
+                gh issue close "$EXISTING" -R "$REPO" --comment "Green again: ${RUN_URL} (${EVENT}, ${SHA:0:7})."
+                echo "closed #$EXISTING"
+              else
+                echo "green and nothing open, nothing to do"
+              fi
+              ;;
+            *)
+              echo "conclusion ${CONCLUSION}: ignored"
+              ;;
+          esac
