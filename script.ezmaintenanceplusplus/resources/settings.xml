@@ -73,6 +73,18 @@
 					<control type="slider" format="integer" />
 				</setting>
 			</group>
+			<group id="5" label="30013">
+				<setting id="repo.check_minutes" type="integer" label="30037">
+					<level>0</level>
+					<default>60</default>
+					<constraints>
+						<minimum>0</minimum>
+						<step>15</step>
+						<maximum>1440</maximum>
+					</constraints>
+					<control type="slider" format="integer" />
+				</setting>
+			</group>
 		</category>
 
 		<category id="backup_restore" label="30002">

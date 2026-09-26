@@ -35,6 +35,10 @@ msgctxt "#30012"
 msgid "Thumbnails Folder Limits"
 msgstr ""
 
+msgctxt "#30013"
+msgid "Repository Updates"
+msgstr ""
+
 # --- Maintenance settings ---
 msgctxt "#30030"
 msgid "Show Stats at Startup"
@@ -62,6 +66,10 @@ msgstr ""
 
 msgctxt "#30036"
 msgid "Max Thumbnails Folder Size (MB)"
+msgstr ""
+
+msgctxt "#30037"
+msgid "Check the repository for updates every N minutes (0 is off, 15 minimum)"
 msgstr ""
 
 # --- Backup/Restore settings, control headings, spinner options ---

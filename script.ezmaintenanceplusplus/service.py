@@ -790,6 +790,147 @@ def _maybe_fix_pov_resume_seek():
             pass
 
 
+# --------------------------------------------------------------------------- #
+# Scheduled repository update check.
+#
+# A release is on the hub within minutes of a push; a box then waited up to 24
+# hours for Kodi's own repository timer, or for someone to press Check for
+# updates in the add-on browser. This service already ticks every 60 s, so it
+# now presses that button itself: xbmc.executebuiltin("UpdateAddonRepos") is
+# the same action the add-on browser's Check for updates runs. It refreshes the
+# repository INDEXES only. Whether Kodi then installs is governed by the user's
+# own update settings, which this add-on never reads, sets or changes.
+#
+# The last-check stamp is a FILE in this add-on's addon_data, for the same
+# reason as STALE_KEY_PURGE_MARKER above: settings.xml is restore-clobbered and
+# in-memory-shadowed, a marker file is not. At service start the clock is armed
+# so the first check lands one full interval after boot, never at boot (Kodi
+# runs its own check on start); a restart inside the interval keeps the stamp,
+# so it does not fire an extra check either.
+# --------------------------------------------------------------------------- #
+REPO_CHECK_STAMP = translatePath(
+    "special://home/userdata/addon_data/" + AddonID + "/.ezm_repo_check"
+)
+REPO_CHECK_SETTING = "repo.check_minutes"
+REPO_CHECK_DEFAULT_MINUTES = 60
+REPO_CHECK_MIN_MINUTES = 15
+REPO_CHECK_BUILTIN = "UpdateAddonRepos"
+
+
+def _repo_check_interval_minutes(setting=None):
+    """The configured interval in minutes: 0 disables, anything else is held
+    to the REPO_CHECK_MIN_MINUTES floor. Never raises."""
+    try:
+        if setting is None:
+            setting = xbmcaddon.Addon().getSetting
+        minutes = _int_setting(setting, REPO_CHECK_SETTING, REPO_CHECK_DEFAULT_MINUTES)
+    except Exception:
+        minutes = REPO_CHECK_DEFAULT_MINUTES
+    if minutes <= 0:
+        return 0
+    return max(minutes, REPO_CHECK_MIN_MINUTES)
+
+
+def _read_repo_check_stamp():
+    """Epoch seconds of the last check (or arming), 0.0 if none. Never raises."""
+    try:
+        with open(REPO_CHECK_STAMP, "r") as f:
+            return float(f.read().strip())
+    except Exception:
+        return 0.0
+
+
+def _write_repo_check_stamp(ts):
+    """Best-effort; never raises."""
+    try:
+        d = os.path.dirname(REPO_CHECK_STAMP)
+        if not os.path.isdir(d):
+            os.makedirs(d)
+        with open(REPO_CHECK_STAMP, "w") as f:
+            f.write("%d" % int(ts))
+        return True
+    except Exception:
+        return False
+
+
+def _arm_repo_check_clock(now=None):
+    """Service start: keep a stamp that is still inside the interval, so a
+    restart does not fire an extra check; otherwise (no stamp, a stale one, or
+    one from the future after a clock change) stamp now, so the first check
+    lands one full interval after boot. Never raises."""
+    try:
+        now = time.time() if now is None else now
+        minutes = _repo_check_interval_minutes()
+        last = _read_repo_check_stamp()
+        interval = (minutes or REPO_CHECK_DEFAULT_MINUTES) * 60
+        if last <= 0 or last > now or now - last >= interval:
+            _write_repo_check_stamp(now)
+    except Exception:
+        pass
+
+
+def _maybe_update_addon_repos(now=None, playing=None):
+    """One maintenance tick's worth of the repository check. Fires the builtin
+    once the interval has elapsed since the stamp, unless video is playing (then
+    it waits for the next tick). Returns True when it fired. Never raises."""
+    try:
+        minutes = _repo_check_interval_minutes()
+        if minutes == 0:
+            return False
+        now = time.time() if now is None else now
+        last = _read_repo_check_stamp()
+        if last <= 0 or last > now:
+            _write_repo_check_stamp(now)
+            return False
+        if now - last < minutes * 60:
+            return False
+        if playing is None:
+            playing = xbmc.Player().isPlayingVideo()
+        if playing:
+            return False
+        xbmc.executebuiltin(REPO_CHECK_BUILTIN)
+        _write_repo_check_stamp(now)
+        xbmc.log(
+            "ezmaintenanceplus: repository update check triggered (every %d min)"
+            % minutes,
+            level=loglevel,
+        )
+        return True
+    except Exception as e:
+        try:
+            xbmc.log(
+                "ezmaintenanceplus: repository update check failed %s: %s"
+                % (type(e).__name__, e),
+                level=xbmc.LOGWARNING,
+            )
+        except Exception:
+            pass
+        return False
+
+
+def _service_loop(monitor):
+    """The 60 s maintenance tick: AutoClean on its schedule, and the repository
+    update check on its own. Both skip while video is playing. Returns when
+    Kodi asks the service to stop."""
+    while not monitor.abortRequested():
+        # The auto-clean schedule is measured in days; a 60s tick is plenty.
+        if monitor.waitForAbort(60):
+            # Abort was requested while waiting. We should exit
+            break
+        if not xbmc.Player().isPlayingVideo():
+            nextMaintenance = maintenance.getNextMaintenance()
+            if (
+                nextMaintenance > 0
+                and time.time() >= nextMaintenance
+                and not monitor.abortRequested()
+            ):
+                xbmc.log("ezmaintenanceplus: AutoClean started", level=loglevel)
+                maintenance.clearCache()
+                xbmc.log("ezmaintenanceplus: AutoClean done", level=loglevel)
+                maintenance.determineNextMaintenance()
+            _maybe_update_addon_repos(playing=False)
+
+
 def _jsonrpc_service(method, params):
     """One JSON-RPC call from the boot service; parsed 'result' or None."""
     try:
@@ -834,22 +975,8 @@ if __name__ == "__main__":
                 level=xbmc.LOGWARNING,
             )
 
-    while not monitor.abortRequested():
-        # The auto-clean schedule is measured in days; a 60s tick is plenty.
-        if monitor.waitForAbort(60):
-            # Abort was requested while waiting. We should exit
-            break
-        if not xbmc.Player().isPlayingVideo():
-            nextMaintenance = maintenance.getNextMaintenance()
-            if (
-                nextMaintenance > 0
-                and time.time() >= nextMaintenance
-                and not monitor.abortRequested()
-            ):
-                xbmc.log("ezmaintenanceplus: AutoClean started", level=loglevel)
-                maintenance.clearCache()
-                xbmc.log("ezmaintenanceplus: AutoClean done", level=loglevel)
-                maintenance.determineNextMaintenance()
+    _arm_repo_check_clock()
+    _service_loop(monitor)
 
     # THE SHUTDOWN-WINDOW WRITE (deferred guisettings nodes - the profile's
     # expert settings level). This MUST sit here, after the loop breaks on

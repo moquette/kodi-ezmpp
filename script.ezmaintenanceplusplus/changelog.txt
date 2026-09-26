@@ -1,3 +1,18 @@
+v2026.09.26.1
+- The box now checks the Tony.7.Bones repository for updates on its
+  own, every hour, so a new release reaches it within the hour instead
+  of waiting up to a day for Kodi's own once-a-day check or for
+  someone to press Check for updates. It is the same check that button
+  runs and nothing more: it only refreshes the repository's list, and
+  whether Kodi then installs what it finds is still decided by the
+  auto-update setting, which this add-on does not touch. The interval
+  is on the Maintenance tab of the add-on's settings, "Check the
+  repository for updates every N minutes": the default is 60, the
+  shortest allowed is 15, and 0 switches it off. The first check after
+  a restart comes one full interval later, not straight away, and the
+  check waits while a video is playing. Nothing to do by hand, and
+  backups, restores and the custom menu are untouched.
+
 v2026.09.17.1
 - AutoCompletion's hide-from-Program-add-ons fix now takes effect the
   same boot it applies, instead of needing a second restart to actually

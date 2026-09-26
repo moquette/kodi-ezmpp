@@ -57,6 +57,28 @@ on-device QR code), and - the largest addition - **tvOS/Apple TV storage hardeni
 (below). The version scheme is date-stamped (`YYYY.MM.DD.N`); check `addon.xml` for the
 current one rather than trusting a number written down anywhere, including this file.
 
+## Scheduled repository update check (since 2026.09.26.1)
+
+The service (`service.py`, the 60 s maintenance tick) runs Kodi's own
+`UpdateAddonRepos` builtin on a schedule, the same action as Check for updates
+in the add-on browser, so a box picks up a new release within the hour instead
+of waiting up to a day for Kodi's repository timer or for someone to press the
+button. It refreshes the repository indexes only; whether Kodi then installs is
+governed by the user's auto-update setting, which this add-on never reads, sets
+or changes.
+
+- Setting: Maintenance tab, "Check the repository for updates every N minutes"
+  (`repo.check_minutes`). Default 60, floor 15 (lower values are held to 15),
+  0 switches it off. Read every tick, so a change applies live.
+- The last-check stamp is the file `addon_data/script.ezmaintenanceplusplus/.ezm_repo_check`,
+  not a setting, so a restart inside the interval fires no extra check; the
+  first check after a boot lands one full interval later, never at boot.
+- The check waits while a video is playing and fires on the next tick after.
+- One log line per trigger at the add-on's normal level:
+  `ezmaintenanceplus: repository update check triggered (every N min)`.
+  An exception in the check is logged as a warning and never stops the loop.
+- Tests: `tests/test_service_repo_update_check.py`.
+
 ## tvOS/Apple TV storage hardening (why this add-on is more careful than it looks)
 
 Apple TV stores Kodi's files fundamentally differently from every other platform: the

@@ -187,6 +187,20 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
   with `addons.updatemode`, which is the unknown-sources policy and unrelated. Verify a
   box with `Settings.GetSettingValue` over JSON-RPC.
 
+## The scheduled repository update check (service.py, since 2026.09.26.1)
+
+`_service_loop` runs `_maybe_update_addon_repos` on every 60 s tick when no
+video is playing; it fires `xbmc.executebuiltin("UpdateAddonRepos")` once per
+interval (`repo.check_minutes`: default 60, floor 15, 0 off) and logs
+`ezmaintenanceplus: repository update check triggered (every N min)`. The
+last-check stamp is a file, `addon_data/<id>/.ezm_repo_check`, armed by
+`_arm_repo_check_clock` at service start so the first check after boot is a
+full interval later and a restart inside the interval fires nothing extra.
+Owner rule: pressing the check is fine, changing the setting is not. The
+feature never reads or writes `addons.updatemode` or `general.addonupdates`,
+and `tests/test_service_repo_update_check.py` pins that along with the cadence,
+the playback deferral, the clamp and the restart persistence.
+
 ## The tvOS/Apple TV storage rules (read before touching `nsud.py`/`nsub.py`/`wiz.py`)
 
 Apple TV shadows certain userdata `.xml` files into NSUserDefaults; a key SHADOWS the
