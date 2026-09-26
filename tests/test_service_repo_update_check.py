@@ -484,13 +484,45 @@ def test_loop_exits_on_abort_before_any_work(env):
     assert env.builtins == []
 
 
+def test_arming_is_skipped_when_the_service_is_already_stopping(env):
+    """A service aborted inside its boot window (update landing, add-on being
+    disabled) must not touch the stamp or ask Kodi for the add-on: on office
+    2026-09-26 10:53:10 that produced Kodi's "EXCEPTION: Unknown addon id"."""
+    mod = env.load()
+    addon_calls = []
+    real_addon = sys.modules["xbmcaddon"].Addon
+
+    def _counting(*a, **k):
+        addon_calls.append(1)
+        return real_addon(*a, **k)
+
+    sys.modules["xbmcaddon"].Addon = _counting
+
+    class _Stopping:
+        def abortRequested(self):
+            return True
+
+    mod._arm_repo_check_clock(monitor=_Stopping())
+    assert not Path(mod.REPO_CHECK_STAMP).exists()
+    assert addon_calls == []
+
+    class _Running:
+        def abortRequested(self):
+            return False
+
+    mod._arm_repo_check_clock(monitor=_Running())
+    assert _stamp(mod) == T0
+
+
 def test_main_arms_the_clock_then_runs_the_loop(env):
     """The wiring in __main__: arm first (so a stamp-less boot starts a full
     interval), then the loop. Read from the source, since __main__ cannot be
     imported."""
     src = SERVICE_PY.read_text(encoding="utf-8")
     main = src[src.index('if __name__ == "__main__":') :]
-    assert main.index("_arm_repo_check_clock()") < main.index("_service_loop(monitor)")
+    assert main.index("_arm_repo_check_clock(monitor=monitor)") < main.index(
+        "_service_loop(monitor)"
+    )
     assert main.count("while not monitor.abortRequested()") == 0  # the loop moved
 
 

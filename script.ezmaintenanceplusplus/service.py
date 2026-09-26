@@ -853,12 +853,19 @@ def _write_repo_check_stamp(ts):
         return False
 
 
-def _arm_repo_check_clock(now=None):
+def _arm_repo_check_clock(now=None, monitor=None):
     """Service start: keep a stamp that is still inside the interval, so a
     restart does not fire an extra check; otherwise (no stamp, a stale one, or
     one from the future after a clock change) stamp now, so the first check
-    lands one full interval after boot. Never raises."""
+    lands one full interval after boot. Never raises.
+
+    Skipped when Kodi has already asked this service to stop: a service aborted
+    inside its boot window (an update installing, the add-on being disabled)
+    has no clock to arm, and xbmcaddon.Addon() on a just-disabled add-on makes
+    Kodi log "EXCEPTION: Unknown addon id" (office, 2026-09-26 10:53:10)."""
     try:
+        if _aborting(monitor):
+            return
         now = time.time() if now is None else now
         minutes = _repo_check_interval_minutes()
         last = _read_repo_check_stamp()
@@ -975,7 +982,7 @@ if __name__ == "__main__":
                 level=xbmc.LOGWARNING,
             )
 
-    _arm_repo_check_clock()
+    _arm_repo_check_clock(monitor=monitor)
     _service_loop(monitor)
 
     # THE SHUTDOWN-WINDOW WRITE (deferred guisettings nodes - the profile's

@@ -69,7 +69,7 @@ msgid "Max Thumbnails Folder Size (MB)"
 msgstr ""
 
 msgctxt "#30037"
-msgid "Check repository for updates every N minutes (0 is off)"
+msgid "Check for updates every N minutes (0 is off)"
 msgstr ""
 
 # --- Backup/Restore settings, control headings, spinner options ---

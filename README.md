@@ -67,8 +67,8 @@ button. It refreshes the repository indexes only; whether Kodi then installs is
 governed by the user's auto-update setting, which this add-on never reads, sets
 or changes.
 
-- Setting: Maintenance tab, "Check repository for updates every N minutes
-  (0 is off)" (`repo.check_minutes`, a slider in steps of 15). Default 60,
+- Setting: Maintenance tab, group Repository Updates, "Check for updates every
+  N minutes (0 is off)" (`repo.check_minutes`, a slider in steps of 15). Default 60,
   floor 15 (a lower value is held to 15 in code), 0 switches it off. Read
   every tick, so a change applies live.
 - The last-check stamp is the file `addon_data/script.ezmaintenanceplusplus/.ezm_repo_check`,

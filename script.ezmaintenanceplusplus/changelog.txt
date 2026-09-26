@@ -1,3 +1,15 @@
+v2026.09.26.3
+- The repository-check setting's label now really fits its row: the
+  previous release shortened it, but not enough, so on the box it
+  still slid sideways when highlighted. It now reads "Check for
+  updates every N minutes (0 is off)" under the Repository Updates
+  heading, which fits with room to spare. Also, a service that is
+  being stopped in the middle of its own start-up (an update landing,
+  or the add-on being switched off) no longer asks Kodi for the add-on
+  it is part of, which left one harmless "Unknown addon id" error in
+  the log. Nothing else changed: the hourly check, the default of 60
+  and any value you set stay as they were.
+
 v2026.09.26.2
 - The new repository-check setting's label now fits its row. On the
   box it read "Check the repository for updates every N minutes (0 is
