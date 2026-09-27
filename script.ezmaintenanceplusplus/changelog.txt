@@ -1,3 +1,11 @@
+v2026.09.27.3
+- Kodi's log now stays clean after the speed test: the add-on no
+  longer leaves its settings objects behind in memory when it closes,
+  which Kodi reported with a warning after a speed test on
+  2026.09.27.2. A speed test server that answers with garbage now
+  fails that one request instead of the whole test. Nothing else
+  changed: backups, restores and the custom menu are untouched.
+
 v2026.09.27.2
 - The speed test now runs inside the add-on instead of being handed to
   Kodi as a loose script, and Kodi's log stays clean while it runs:

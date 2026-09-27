@@ -111,9 +111,9 @@ except ImportError:
                                 HTTPErrorProcessor, OpenerDirector)
 
 try:
-    from httplib import HTTPConnection
+    from httplib import HTTPConnection, HTTPException
 except ImportError:
-    from http.client import HTTPConnection
+    from http.client import HTTPConnection, HTTPException
 
 try:
     from httplib import HTTPSConnection
@@ -611,8 +611,20 @@ def distance(origin, destination):
     return d
 
 
+_USER_AGENT = None
+
+
 def build_user_agent():
-    """Build a Mozilla/5.0 compatible User-Agent string"""
+    """Build a Mozilla/5.0 compatible User-Agent string, once.
+
+    platform.architecture() runs the `file` command in a subprocess. The
+    first call comes from build_opener, before any request; caching it
+    keeps get_best_server from forking again after the process has used
+    the network, which on macOS crashes the forked child (2026-09-26).
+    """
+    global _USER_AGENT
+    if _USER_AGENT is not None:
+        return _USER_AGENT
 
     ua_tuple = (
         'Mozilla/5.0',
@@ -623,6 +635,7 @@ def build_user_agent():
     )
     user_agent = ' '.join(ua_tuple)
     printer('User-Agent: %s' % user_agent, debug=True)
+    _USER_AGENT = user_agent
     return user_agent
 
 
@@ -760,7 +773,9 @@ class HTTPDownloader(threading.Thread):
                     if self.result[-1] == 0:
                         break
                 f.close()
-        except IOError:
+        except (IOError, HTTPException):
+            # A server answering garbage (BadStatusLine, measured
+            # 2026-09-26) is a failed request, not a failed test.
             pass
 
 
@@ -860,7 +875,10 @@ class HTTPUploader(threading.Thread):
                 self.result = sum(self.request.data.total)
             else:
                 self.result = 0
-        except (IOError, SpeedtestUploadTimeout):
+        except (IOError, HTTPException, SpeedtestUploadTimeout):
+            # HTTPException too: one server answering garbage
+            # (BadStatusLine, measured 2026-09-26) left result None and
+            # the consumer's sum() then failed the whole test.
             self.result = sum(self.request.data.total)
 
 

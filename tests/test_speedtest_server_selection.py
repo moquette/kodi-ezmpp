@@ -495,3 +495,36 @@ def test_the_real_parser_accepts_an_empty_argv_under_a_plugin_sys_argv(
     monkeypatch.setattr(sys, "argv", PLUGIN_ARGV)
     args = st.parse_args([])
     assert args.share is True and args.download is True and args.upload is True
+
+
+# --------------------------------------------------------------------------- #
+# Worker threads and the User-Agent
+# --------------------------------------------------------------------------- #
+def test_a_garbage_status_line_fails_one_request_not_the_test(st):
+    import http.client
+
+    class Opener:
+        def open(self, request):
+            raise http.client.BadStatusLine("\x8a~")
+
+    data = types.SimpleNamespace(start=None, total=[0, 4096])
+    request = types.SimpleNamespace(data=data)
+    up = st.HTTPUploader(0, request, st.timeit.default_timer(), 10, 10, Opener())
+    up.run()
+    assert up.result == 4096
+    down = st.HTTPDownloader(0, request, st.timeit.default_timer(), 10, Opener())
+    down.run()
+    assert sum(down.result) == 0
+
+
+def test_the_user_agent_is_built_once(st, monkeypatch):
+    """platform.architecture() forks `file`; after the first request a fork
+    crashes the child on macOS, so the string is built once, up front."""
+    calls = []
+    monkeypatch.setattr(st, "_USER_AGENT", None)
+    monkeypatch.setattr(
+        st.platform, "architecture", lambda *a, **k: calls.append(1) or ("64bit", "")
+    )
+    first = st.build_user_agent()
+    assert st.build_user_agent() is first
+    assert len(calls) == 1

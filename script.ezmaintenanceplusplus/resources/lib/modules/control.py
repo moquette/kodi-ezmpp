@@ -19,15 +19,24 @@ from resources.lib.modules import addon_id as _addon_id
 from resources.lib.modules import ui
 
 
-setting = xbmcaddon.Addon().getSetting
+# No Kodi object is created at import. This module is loaded on every plugin
+# run, and its module-level Addon and Dialog objects were what Kodi reported as
+# "left several classes in memory" after the in-process speed test (office Fire
+# TV, 2026-09-26: Addon, Addon, Addon, Dialog). Each call makes its own.
+
+
+def setting(key):
+    return xbmcaddon.Addon().getSetting(key)
+
 
 # Kept even though no shipped code path writes through it: the wiz restore test
 # patches it as a tripwire proving restore() never re-stamps box-local settings.
-setSetting = xbmcaddon.Addon().setSetting
+def setSetting(key, value):
+    return xbmcaddon.Addon().setSetting(key, value)
 
-addonInfo = xbmcaddon.Addon().getAddonInfo
 
-dialog = xbmcgui.Dialog()
+def addonInfo(key):
+    return xbmcaddon.Addon().getAddonInfo(key)
 
 execute = xbmc.executebuiltin
 
@@ -64,7 +73,7 @@ def infoDialog(message, heading=ui.HEADING, icon="", time=None, sound=False):
         icon = xbmcgui.NOTIFICATION_WARNING
     elif icon == "ERROR":
         icon = xbmcgui.NOTIFICATION_ERROR
-    dialog.notification(heading, message, icon, time, sound=sound)
+    xbmcgui.Dialog().notification(heading, message, icon, time, sound=sound)
 
 
 def selectDialog(list, heading=ui.HEADING):
@@ -79,7 +88,7 @@ def selectDialog(list, heading=ui.HEADING):
     Note the argument order: Kodi takes (heading, list), this takes (list,
     heading). Do not pass a third positional argument through - Kodi's third is
     `autoclose`, in milliseconds."""
-    return dialog.select(heading, list)
+    return xbmcgui.Dialog().select(heading, list)
 
 
 # How many times openSettings() has fired in THIS script run. Addon.OpenSettings is

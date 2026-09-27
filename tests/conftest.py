@@ -20,6 +20,16 @@ import pytest
 
 ADDON_ROOT = Path(__file__).resolve().parent.parent / "script.ezmaintenanceplusplus"
 
+# Every test file must behave the same run alone as in the full suite. The full
+# run only passed because test_addon_id_seam.py (first alphabetically) leaves
+# the REAL resources package and its addon_id seam in sys.modules; run on its
+# own, a dozen files errored on "cannot import name 'addon_id'" or "No module
+# named 'resources'". Import it here, once, for every file. addon_id imports no
+# Kodi module at load, so this pulls in nothing else.
+if str(ADDON_ROOT) not in sys.path:
+    sys.path.insert(0, str(ADDON_ROOT))
+importlib.import_module("resources.lib.modules.addon_id")
+
 
 # --------------------------------------------------------------------------- #
 # Fake Kodi modules
@@ -400,6 +410,7 @@ def fake_kodi(monkeypatch):
             m.__path__ = []
             monkeypatch.setitem(sys.modules, pkg, m)
     # _appauth absent -> dropbox_remote's try/except import falls through to settings
+
 
     # Import the real module fresh
     sys.modules.pop("dropbox_remote", None)

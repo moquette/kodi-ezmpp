@@ -243,3 +243,41 @@ def test_open_settings_tab_survives_a_probe_that_throws(
     assert control_mod.openSettingsTab(1, timeout=5.0, poll=0.1) is False
     assert control_mod.open_settings_count() == before + 1, "settings never opened"
     assert not [e for e in events if "SetFocus" in e], events
+
+
+def test_importing_control_creates_no_kodi_object(control_mod, monkeypatch):
+    """control.py is imported on every plugin run. After the in-process speed
+    test Kodi reported its module-level objects as "left several classes in
+    memory" (office, 2026-09-26: Addon, Addon, Addon, Dialog), so the module
+    keeps none: re-importing it under recording Kodi classes builds nothing."""
+    import xbmcaddon
+    import xbmcgui
+
+    made = []
+
+    class Addon:
+        def __init__(self, *a, **k):
+            made.append("Addon")
+
+        def getSetting(self, key):
+            return "v:" + key
+
+    class Dialog:
+        def __init__(self, *a, **k):
+            made.append("Dialog")
+
+        def select(self, heading, items):
+            return 0
+
+    monkeypatch.setattr(xbmcaddon, "Addon", Addon)
+    monkeypatch.setattr(xbmcgui, "Dialog", Dialog)
+    spec = importlib.util.spec_from_file_location(
+        "ezm_control_import_probe",
+        ADDON_ROOT / "resources" / "lib" / "modules" / "control.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert made == [], made
+    assert mod.setting("x") == "v:x"
+    assert mod.selectDialog(["a"]) == 0
+    assert made == ["Addon", "Dialog"]

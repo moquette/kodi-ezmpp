@@ -59,12 +59,16 @@ defects are FIXED IN CODE; what survives them is summarized below.
 **For anything Apple TV, read `~/Code/kodi/.claude/skills/apple-tv/SKILL.md`.**
 
 The kodi.log error "Control 55 in window 10001 has been asked to focus, but it
-can't" comes only from opening this add-on headlessly with JSON-RPC
-`Addons.ExecuteAddon`, which initialises Programs on an empty listing; the
-normal remote path (Home, Add-ons, Program add-ons, EZ Maintenance++, then
-Speedtest and back out) never logs it, so it is not a skin defect (MEASURED
-on office 2026-09-26: zero lines over 281 log lines for the remote path, one
-line at 20:29:48 within a second of `ExecuteAddon`).
+can't" is Kodi core, not this add-on and not a skin defect: opening any plugin
+in a media window delays the listing fetch by 200 ms (`PLUGIN_REFRESH_DELAY`,
+xbmc `GUIMediaWindow.cpp` `OnInitWindow`), the window restores focus to the
+remembered view before the list has items, and an empty container cannot take
+focus (`GUIBaseContainer.cpp` `CanFocus`); focus is restored again once the
+list loads. MEASURED on office 2026-09-26: the normal remote path (Home tile
+into Program add-ons, EZ Maintenance++) logged it once at 20:36:21 and not at
+20:27:42, and `Addons.ExecuteAddon` logged it at 20:29:48; Estuary++'s
+`MyPrograms.xml` and `View_55_WideList.xml` are byte-identical to stock
+Estuary 4.1.0.
 
 ### The two restore defects - both FIXED, one residue OPEN BY DESIGN
 
