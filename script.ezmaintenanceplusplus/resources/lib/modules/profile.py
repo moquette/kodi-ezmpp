@@ -111,7 +111,7 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 
-from resources.lib.modules import _kodisettings, nsud
+from resources.lib.modules import _kodisettings, nsud, pvrshare, sharehost
 from resources.lib.modules import addon_id as _addon_id
 
 SCHEMA_VERSION = 1
@@ -143,8 +143,14 @@ REFUSED = "refused"
 UNKNOWN = "unknown-id"
 TIMEOUT = "timeout"
 ERROR = "error"
+# A guard fired and the step deliberately did nothing (the share was
+# unreachable, something was playing). Nothing is wrong and nothing was
+# touched, so it counts as OK: the flow must not report "partly applied" for
+# a media server that is off tonight (the same reasoning as the boot check's
+# refusal to call Files.GetDirectory on the NFS sources).
+SKIPPED = pvrshare.SKIPPED
 
-_OK_OUTCOMES = (APPLIED, ALREADY)
+_OK_OUTCOMES = (APPLIED, ALREADY, SKIPPED)
 
 # E3 measured the unknownsources confirm holding its thread 17.3 s (until
 # answered); the answer loop polls every 300 ms, so 20 s is generous without
@@ -379,7 +385,22 @@ def _load_sources(path, problems):
     if not os.path.exists(path):
         return []
     try:
-        root = ET.parse(path).getroot()
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except Exception as e:
+        problems.append("sources.xml: unreadable: %s" % e)
+        return []
+    if sharehost.names_legacy_host(text):
+        # The mini's address lives in sharehost.SHARE_HOST and nowhere else;
+        # a bundle naming a host literally is the drift this token exists to
+        # end (the LAN address was baked into every artifact until
+        # 2026-09-26).
+        problems.append(
+            "sources.xml: names a legacy share host literally; use the %s token"
+            % sharehost.TOKEN
+        )
+    try:
+        root = ET.fromstring(sharehost.render(text))
     except Exception as e:
         problems.append("sources.xml: parse failure: %s" % e)
         return []
@@ -676,6 +697,13 @@ def _load_addon_data(bundle_dir, overlay_dir, problems):
                         "getSetting()" % (aid, fname)
                     )
                     continue
+                if sharehost.names_legacy_host(raw):
+                    problems.append(
+                        "addon_data %s/%s names a legacy share host literally; "
+                        "use the %s token" % (aid, fname, sharehost.TOKEN)
+                    )
+                    continue
+                raw = sharehost.render(raw)
                 try:
                     root = ET.fromstring(raw)
                 except Exception as e:
@@ -734,7 +762,14 @@ def plan(bundle):
       6. class C source merge, write and vector gated on `if added or renamed`
       6b. RssFeeds.xml whole-file write, byte-idempotent (the flush never
           touches it; measured 2026-08-30)
+      6c. PVR share settings (pvrshare.sync): pvr.iptvsimple's instance files
+          brought equal to the share's templates, one client reload if any
+          changed; its own guards report `skipped`, an OK outcome
       7. the T7B repository enable, LAST
+
+    Every path that names the mini is rendered from sharehost.SHARE_HOST at
+    load (the @SHARE_HOST@ token), and steps 1 and 6 migrate a box's live
+    values off a legacy host (sharehost.migrate) before their compares.
 
     Step 2 before step 3 and step 3 before step 4 are both load-bearing for
     the weather payload: the location file must be on disk before weather.multi
@@ -786,6 +821,11 @@ def plan(bundle):
         ops.append({"kind": "sources", "entries": list(bundle["sources"])})
     if bundle["rssfeeds"] is not None:
         ops.append({"kind": "rss-feeds", "xml": bundle["rssfeeds"]})
+    # 6c. PVR share settings: pvr.iptvsimple's instance files brought equal
+    # to the share's templates, one reload if anything changed (pvrshare.py).
+    # After the sources so a box whose KodiShare entry just migrated hosts
+    # is listed with the same host the templates now carry.
+    ops.append({"kind": "pvr-share"})
     for a in last:
         ops.append({"kind": "enable", "addon": a["id"], "last": True})
     return ops
@@ -870,6 +910,7 @@ def apply(ops, on_step=None, log=None):
         "guisettings-nodes": _apply_guisettings_nodes,
         "sources": _apply_sources,
         "rss-feeds": _apply_rss_feeds,
+        "pvr-share": _apply_pvr_share,
     }
     for i, op in enumerate(ops):
         label = _op_label(op)
@@ -911,21 +952,46 @@ def _op_label(op):
         return "file manager sources"
     if kind == "rss-feeds":
         return "RSS feed list"
+    if kind == "pvr-share":
+        return "PVR share settings"
     return kind
 
 
 def _apply_own_setting(op, ctx):
     """setSetting() updates the live store and the file together; EZ
     Maintenance++ is already enabled and running, so 'write the file before
-    enablement' is meaningless for it and a raw write is wrong (plan 7.4 2b)."""
+    enablement' is meaningless for it and a raw write is wrong (plan 7.4 2b).
+    A value that still names a legacy share host is reported as a host
+    migration, so the log says what moved and why."""
     addon = xbmcaddon.Addon()
     sid, text = op["id"], op["value"]
-    if addon.getSetting(sid) == text:
+    current = addon.getSetting(sid)
+    if current == text:
         return ALREADY, ""
     addon.setSetting(sid, text)
     if addon.getSetting(sid) == text:
+        if sharehost.names_legacy_host(current):
+            return APPLIED, "share host migrated to %s (was %s)" % (
+                sharehost.SHARE_HOST,
+                current,
+            )
         return APPLIED, ""
     return REFUSED, "setSetting read-back mismatch"
+
+
+def _apply_pvr_share(op, ctx):
+    """The PVR share step (pvrshare.sync). Its own guards decide `skipped`;
+    a skip is OK for the flow (the share being off is not a profile
+    failure), a write failure or a failed reload is an error."""
+    res = pvrshare.sync(log=ctx["log"])
+    outcome = res["outcome"]
+    if outcome == pvrshare.APPLIED:
+        return APPLIED, res["detail"]
+    if outcome == pvrshare.ALREADY:
+        return ALREADY, res["detail"]
+    if outcome == pvrshare.SKIPPED:
+        return SKIPPED, res["detail"]
+    return ERROR, res["detail"]
 
 
 def _addon_data_current(rel, pairs):
@@ -1571,6 +1637,10 @@ def _apply_sources(op, ctx):
         files = ET.SubElement(root, "files")
     if files.find("default") is None:
         files.insert(0, ET.Element("default"))
+    # Host migration FIRST: an entry still on a legacy host is the same
+    # source (dedupe would keep it by name and leave the box on the old
+    # address), so it moves to SHARE_HOST in place, one log line per entry.
+    migrated = _migrate_files_section(files, ctx["log"])
     renamed = 0
     for name, spath in op["entries"]:
         same_url = [
@@ -1605,18 +1675,104 @@ def _apply_sources(op, ctx):
         have_names.add(name)
         have_paths.add(spath)
         added += 1
-    if added or renamed:
+    if added or renamed or migrated:
         xml_path = xbmcvfs.translatePath("special://profile/sources.xml")
         with open(xml_path, "w", encoding="utf-8") as f:
             f.write(ET.tostring(root, encoding="unicode"))
         persisted = nsud.persist_one("sources.xml", log=ctx["log"])
         if not persisted and _is_tvos():
             ctx["warnings"].append("sources.xml: tvOS vector unconfirmed")
-        return APPLIED, "%d added, %d consolidated; live after the restart" % (
-            added,
-            renamed,
+        return APPLIED, (
+            "%d added, %d consolidated, %d moved to %s; live after the restart"
+            % (added, renamed, migrated, sharehost.SHARE_HOST)
         )
     return ALREADY, ""
+
+
+def _migrate_files_section(files, log):
+    """Move every <files> source path on a legacy share host to SHARE_HOST,
+    in place. Returns the count. One log line per entry moved, none when
+    nothing moves, so a second run is silent and touches nothing."""
+    moved = 0
+    for src in files.findall("source"):
+        pnode = src.find("path")
+        if pnode is None:
+            continue
+        old = (pnode.text or "").strip()
+        new, n = sharehost.migrate(old)
+        if not n or new == old:
+            continue
+        pnode.text = new
+        moved += 1
+        log(
+            "source %s: share host migrated to %s (was %s)"
+            % ((src.findtext("name") or "").strip() or "?", sharehost.SHARE_HOST, old)
+        )
+    return moved
+
+
+# The two own settings that name the mini. Both are browse-only folder
+# settings in Kodi's dialog, so a user cannot retype them; the migration is
+# the only way an existing box moves without a hand edit.
+OWN_SHARE_SETTINGS = ("download.path", "restore.path")
+
+
+def ensure_share_host_migrated(log=None):
+    """Boot-time self-heal (service.py): move this add-on's backup and
+    restore folders and the box's <files> sources off any legacy share host
+    onto SHARE_HOST. Same rewrites as the profile's own-setting and sources
+    steps, without the rest of the flow, so a box nobody runs the profile on
+    still follows the mini. Idempotent: a box already on SHARE_HOST reads
+    nothing but its two settings and one file and writes nothing. Returns
+    {"settings": n, "sources": n, "detail": str}. Never raises."""
+    log = log or (
+        lambda msg: xbmc.log(
+            "ezmaintenanceplus: profile: %s" % msg, level=xbmc.LOGINFO
+        )
+    )
+    out = {"settings": 0, "sources": 0, "detail": ""}
+    try:
+        addon = xbmcaddon.Addon()
+        for sid in OWN_SHARE_SETTINGS:
+            current = addon.getSetting(sid)
+            new, n = sharehost.migrate(current)
+            if not n or new == current:
+                continue
+            addon.setSetting(sid, new)
+            if addon.getSetting(sid) == new:
+                out["settings"] += 1
+                log(
+                    "%s %s: share host migrated to %s (was %s)"
+                    % (OWN_ID, sid, sharehost.SHARE_HOST, current)
+                )
+            else:
+                log("%s %s: setSetting read-back mismatch; not migrated" % (OWN_ID, sid))
+        raw = _read_special_bytes("special://profile/sources.xml")
+        if raw and sharehost.names_legacy_host(raw.decode("utf-8", "replace")):
+            root = ET.fromstring(raw)
+            files = root.find("files")
+            moved = _migrate_files_section(files, log) if files is not None else 0
+            if moved:
+                xml_path = xbmcvfs.translatePath("special://profile/sources.xml")
+                with open(xml_path, "w", encoding="utf-8") as f:
+                    f.write(ET.tostring(root, encoding="unicode"))
+                persisted = nsud.persist_one("sources.xml", log=log)
+                if not persisted and _is_tvos():
+                    log("sources.xml: tvOS vector unconfirmed after host migration")
+                out["sources"] = moved
+        if out["settings"] or out["sources"]:
+            out["detail"] = "%d setting(s), %d source(s) moved to %s" % (
+                out["settings"],
+                out["sources"],
+                sharehost.SHARE_HOST,
+            )
+    except Exception as e:  # noqa: BLE001 - never disturb the boot
+        out["detail"] = "share host migration failed: %s: %s" % (type(e).__name__, e)
+        try:
+            log(out["detail"])
+        except Exception:
+            pass
+    return out
 
 
 def pov_installed():

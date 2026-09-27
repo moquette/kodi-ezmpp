@@ -317,10 +317,15 @@ def test_house_androidtv_overlay_points_both_paths_at_the_androidtv_folder(
     bundle = profile.load(str(HOUSE), "androidtv")
     own = bundle["addon_data"]["script.ezmaintenanceplusplus"]["settings.xml"]
     pairs = dict(own["pairs"])
+    # Rendered from sharehost.SHARE_HOST (the mini's tailnet address since
+    # 2026-09-26); the bundle file itself carries the @SHARE_HOST@ token.
+    from resources.lib.modules import sharehost
+
     assert (
         pairs["download.path"]
-        == "nfs://192.168.7.2/Users/moquette/Kodi/Backup/androidtv/"
+        == "nfs://%s/Users/moquette/Kodi/Backup/androidtv/" % sharehost.SHARE_HOST
     )
+    assert sharehost.SHARE_HOST == "100.121.59.123"
     assert pairs["restore.path"] == pairs["download.path"]
     # No event-server override rides along: the esenabled false workaround is
     # tvOS-specific (the 2026-08-28 watchdog kill), never Android's.
@@ -331,16 +336,17 @@ def test_androidtv_addition_left_the_existing_overlay_files_byte_unchanged():
     """The 2026-08-31 androidtv split ADDED a tree; the three existing classes
     ship the exact bytes they shipped before it. Pinned by content hash, so a
     tidy-in-passing rewrite fails here even when the values survive. A later
-    DELIBERATE overlay change updates these pins in the same commit."""
+    DELIBERATE overlay change updates these pins in the same commit (done
+    2026-09-26: the LAN address became the @SHARE_HOST@ token)."""
     import hashlib
 
     pins = {
         "overlays/fireos/addon_data/script.ezmaintenanceplusplus/settings.xml":
-            "1149adf5a98b842de941ae2ad7f1beb1430fd5bf6d280055f6afe5a5be310421",
+            "6073c2baa0c12a8895905b47890025896817d604da8eb82a5ee4b7ef692ff3f2",
         "overlays/bench/addon_data/script.ezmaintenanceplusplus/settings.xml":
-            "1149adf5a98b842de941ae2ad7f1beb1430fd5bf6d280055f6afe5a5be310421",
+            "6073c2baa0c12a8895905b47890025896817d604da8eb82a5ee4b7ef692ff3f2",
         "overlays/tvos/addon_data/script.ezmaintenanceplusplus/settings.xml":
-            "e949c7d8418e8374adb2ef498c939fb4ebcbdc3f2ec24e896aee095cbeedfad7",
+            "b79c57d7204657bacd66d1c8bed2ac156d360f0c3f5ea11b3108d4e67e74e83a",
         "overlays/tvos/settings.d/20-services.xml":
             "772a8934cb378847da57eaaa3afeb8b5c5da880f101507f6e5ec64f96bf2fdbb",
     }
@@ -1006,9 +1012,13 @@ def test_apply_lands_every_class_a_id_with_exactly_one_vector(
     record = rig.profile.apply(ops, on_step=lambda i, n, t: None)
     failures = [
         it for it in record["items"]
-        if it["outcome"] not in ("applied", "already-correct")
+        if it["outcome"] not in ("applied", "already-correct", "skipped")
     ]
     assert not failures, "unexpected failures: %r" % failures
+    # The PVR share step SKIPS here (the rig's VFS has no share to list) and
+    # a skip is OK for the flow; its own cases are tests/test_pvr_share.py.
+    pvr = [it for it in record["items"] if it["kind"] == "pvr-share"]
+    assert len(pvr) == 1 and pvr[0]["outcome"] == "skipped", pvr
 
     # class A: the final artifact is the NSUserDefaults key (POSIX dropped)
     assert rig.store.state("guisettings.xml") == "key-only"
@@ -1105,6 +1115,8 @@ def test_second_apply_is_already_correct_and_takes_no_new_vector(
     # vectors are untouched.
     for it in record["items"]:
         want = "applied" if it["kind"] == "guisettings-nodes" else "already-correct"
+        if it["kind"] == "pvr-share":
+            want = "skipped"  # no share to list in this rig; a guard, not a change
         assert it["outcome"] == want, it
     assert rig.vectors == first_vectors, (
         "a changed-nothing re-run mutated the storage layer"
@@ -1114,7 +1126,7 @@ def test_second_apply_is_already_correct_and_takes_no_new_vector(
     assert rig.profile.flush_deferred_guisettings_nodes(log=lambda m: None)
     third_vectors = list(rig.vectors)
     record = rig.profile.apply(ops)
-    outcomes = {it["outcome"] for it in record["items"]}
+    outcomes = {it["outcome"] for it in record["items"] if it["kind"] != "pvr-share"}
     assert outcomes == {"already-correct"}, record["items"]
     assert rig.vectors == third_vectors, (
         "the post-landing re-run mutated the storage layer"

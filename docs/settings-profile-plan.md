@@ -227,7 +227,7 @@ the `<files>` section lacks one, and the fact that it writes `ET.tostring(...)`
 with no XML declaration.
 
 Two path rules the bundle validator enforces: never a port, because Kodi's own
-browse dialog hands back `nfs://192.168.7.2:2049/...` which both breaks directory
+browse dialog hands back `nfs://<host>:2049/...` which both breaks directory
 listing and registers as a different source; and never a missing trailing slash,
 because Kodi dedupes on the exact path string.
 
@@ -741,7 +741,7 @@ Constraints, all of which come from bugs this project has already paid for:
   that promise.
 - Class C confirmation is `Files.GetSources` by path. `Files.GetDirectory` is NOT
   a verdict-bearing check here: two of the three entries are
-  `nfs://192.168.7.2/...`, so when the mini is powered off that call blocks on the
+  `nfs://<SHARE_HOST>/...` (the mini, `sharehost.SHARE_HOST`), so when the mini is powered off that call blocks on the
   mount timeout inside a check that must stay within the five-second shutdown
   budget, and it would turn "the media server is off tonight" into a "needs
   attention". Bounded and log-only, or dropped. It belongs in E1 and 8.6, where a
@@ -978,8 +978,12 @@ Class C entries, from `bootstrapper/settings/sources.xml`:
 | Name | Path |
 | ---- | ---- |
 | `.T7B` | `https://tony7bones.github.io/` |
-| `KodiShare` | `nfs://192.168.7.2/Users/moquette/Kodi/Share/` |
-| `KodiBackup` | `nfs://192.168.7.2/Users/moquette/Kodi/Backup/` |
+| `KodiShare` | `nfs://@SHARE_HOST@/Users/moquette/Kodi/Share/` |
+| `KodiBackup` | `nfs://@SHARE_HOST@/Users/moquette/Kodi/Backup/` |
+
+The `@SHARE_HOST@` token is rendered from `resources/lib/modules/sharehost.py`
+(the mini's tailnet address `100.121.59.123` since 2026-09-26; before that the
+LAN address `192.168.7.2` was written literally).
 
 Class D:
 

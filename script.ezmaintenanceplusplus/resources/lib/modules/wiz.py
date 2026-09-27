@@ -249,7 +249,8 @@ def _manifest_problems(manifest, namelist):
 # Kodi's own network-browse dialog (used to pick download.path/restore.path -
 # both "type=folder" settings, browse-only, no manual text entry) bakes an
 # explicit port into the nfs:// URL it hands back, e.g.
-# nfs://192.168.7.2:2049/export/path. That explicit-port form breaks Kodi's
+# nfs://100.121.59.123:2049/export/path (the mini's tailnet address,
+# sharehost.SHARE_HOST). That explicit-port form breaks Kodi's
 # own NFS client write path - proven live, independently, on two different
 # boxes (a VfsCopyError / 0-byte copy every time) - while the port-free form
 # (nfs://host/export/path) works. Since the destination setting can only ever

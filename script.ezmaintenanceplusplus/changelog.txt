@@ -1,3 +1,19 @@
+v2026.09.26.5
+- The boxes now reach the mini over Tailscale for the share, backups
+  and the channel settings, so everything works away from home and
+  the home router's address no longer matters. A box still pointed
+  at the old address moves itself the next time it starts (the
+  KodiShare and KodiBackup sources and this add-on's backup and
+  restore folders), and the Settings Profile does the same when you
+  run it. The channel settings now follow the mini automatically: at
+  every start, and whenever the profile runs, the add-on compares
+  the IPTV instance settings on the share with the box's copy and,
+  when they differ, installs the share's copy and reloads the IPTV
+  client once, never while something is playing and never when the
+  share cannot be reached. If the share cannot be reached because
+  Tailscale is not connected, a Fire TV starts Tailscale itself,
+  waits a moment and tries again. Nothing to do by hand.
+
 v2026.09.26.4
 - Internal restructuring so parts of the add-on can be reused
   elsewhere: the add-on's own name, which a dozen of its modules each

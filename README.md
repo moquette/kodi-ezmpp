@@ -80,6 +80,38 @@ or changes.
   An exception in the check is logged as a warning and never stops the loop.
 - Tests: `tests/test_service_repo_update_check.py`.
 
+## The share host and the PVR share step (since 2026.09.26.5)
+
+Every box reaches the mini over Tailscale (owner decision 2026-09-26). The
+mini's tailnet address lives in one place, `resources/lib/modules/sharehost.py`
+(`SHARE_HOST = "100.121.59.123"`), and everything that names the mini derives
+from it: the House bundle's `sources.xml` and per-class overlays carry the
+`@SHARE_HOST@` token and are rendered at load, and `sharehost.migrate` rewrites
+the legacy LAN address (`192.168.7.2`) wherever a box still carries it.
+
+- A box still on the old address moves itself: at every boot
+  (`service._maybe_migrate_share_host`) and on Apply Settings Profile, the
+  KodiShare and KodiBackup sources and this add-on's backup and restore folders
+  are rewritten to `SHARE_HOST`, one log line per item, nothing touched when
+  nothing names a legacy host. Sources are live after the next restart.
+- The PVR share step (`resources/lib/modules/pvrshare.py`) keeps
+  `addon_data/pvr.iptvsimple/instance-settings-N.xml` equal to the templates
+  the IPTV builder publishes at `nfs://<SHARE_HOST>/Users/moquette/Kodi/Share/iptv/`.
+  It runs after the GUI is up at every boot and as a profile step: list the
+  share, compare each template with the box's copy, write the share's copy
+  atomically when they differ, and reload pvr.iptvsimple once (disable then
+  enable over JSON-RPC) if anything changed. An unreachable share, a template
+  that does not parse, or playback in progress means nothing is touched; the
+  service retries a playback deferral on its next idle tick.
+- When the share cannot be listed, a Fire TV starts the Tailscale app once
+  (`resources/lib/modules/tailnet.py`), waits up to 20 s and re-tests; an Apple
+  TV logs that the tailnet is down.
+- Log lines to look for: `ezmaintenanceplus: profile: ... share host migrated to
+  100.121.59.123 (was ...)`, `ezmaintenanceplus: PVR share settings:
+  instance-settings-N.xml updated from the share`, `... pvr.iptvsimple reloaded
+  (disable/enable)`, and `ezmaintenanceplus: tailnet: ...`.
+- Tests: `tests/test_pvr_share.py`.
+
 ## tvOS/Apple TV storage hardening (why this add-on is more careful than it looks)
 
 Apple TV stores Kodi's files fundamentally differently from every other platform: the

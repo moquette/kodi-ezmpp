@@ -201,6 +201,54 @@ feature never reads or writes `addons.updatemode` or `general.addonupdates`,
 and `tests/test_service_repo_update_check.py` pins that along with the cadence,
 the playback deferral, the clamp and the restart persistence.
 
+## The share host and the PVR share step (since 2026.09.26.5)
+
+Owner decision 2026-09-26: every box reaches the mini over Tailscale, never the
+home router's DHCP address. The mini's tailnet address is fixed by Tailscale.
+
+- **One constant.** `resources/lib/modules/sharehost.py` holds `SHARE_HOST`
+  (`100.121.59.123`), the derived `SHARE_URL`, `BACKUP_URL`, `IPTV_URL`, and
+  `LEGACY_HOSTS` (the addresses boxes used to carry; `192.168.7.2` today). No
+  other file names the mini. The House bundle's `sources.xml` and the per-class
+  overlays carry the `@SHARE_HOST@` token and `profile.load` renders it; a bundle
+  file naming a legacy host literally FAILS validation.
+- **Migration, two places, same rewrite.** `sharehost.migrate` moves every
+  `nfs://<legacy>[:port]/` to `SHARE_HOST` and nothing else. The profile's
+  own-setting step and sources step report a moved item as `applied` with the
+  old value in the detail; `profile.ensure_share_host_migrated` does the same
+  at every boot from `service._maybe_migrate_share_host` (this add-on's
+  `download.path`/`restore.path` and the `<files>` sources), one log line per
+  item, silent and storage-untouched when nothing names a legacy host.
+- **The PVR share step** (`resources/lib/modules/pvrshare.py`): lists
+  `IPTV_URL` over `xbmcvfs.listdir`, migrates and parses each
+  `instance-settings-N.xml`, and when the box's copy under
+  `addon_data/pvr.iptvsimple/` differs writes the share's copy (temp file,
+  `os.replace`, mode bits of the file replaced, then `nsud.persist_one`). If
+  anything changed it reloads the client ONCE via `Addons.SetAddonEnabled`
+  false then true, bracketed by the restore's PVR pause marker so a crash
+  between the two calls is healed by `_maybe_resume_paused_pvr`. It never
+  enables a client the box had off. Guards: unreachable share or no instance
+  files is a `skipped` (nothing touched, one log line); a template that is not
+  utf-8, not XML or not `<settings>` is never written; nothing runs while
+  something plays (the service retries on its next idle tick, the profile
+  reports the deferral). `skipped` is an OK outcome for the profile flow.
+- **The Tailscale nudge** (`resources/lib/modules/tailnet.py`): when the share
+  root does not list, an Android box starts `com.tailscale.ipn` ONCE per
+  process via `xbmc.startAndroidActivity`, waits up to 20 s re-probing, and
+  logs one line either way; tvOS logs that the tailnet is down. MEASURED on
+  office 2026-09-26: the launcher and leanback activity both resolve to
+  `com.tailscale.ipn/.MainActivity`; the CONNECT_VPN intent on `.IPNReceiver`
+  is a broadcast and unreachable from Kodi's Python. GUESS, not measured:
+  that opening the app reconnects a client the user left disconnected.
+- **Where it runs.** `service.py` calls `_maybe_sync_pvr_share` after the GUI
+  wait (an NFS listing can block on a dead mount and must never delay the
+  startup sequence); `profile.plan` appends a `pvr-share` op after the sources
+  and before the repository enable. Tests: `tests/test_pvr_share.py`.
+- **This is the second sanctioned boot-time add-on toggle** next to the
+  restore-scoped PVR pause: bounded, always re-enables, only when the client
+  was already enabled, reported loudly when it fails. Read the backup/restore
+  contract's "one bounded toggle" line with this exception in mind.
+
 ## The tvOS/Apple TV storage rules (read before touching `nsud.py`/`nsub.py`/`wiz.py`)
 
 Apple TV shadows certain userdata `.xml` files into NSUserDefaults; a key SHADOWS the
@@ -256,7 +304,9 @@ not a spec):
   STRAY `instance-settings-*.xml` AFTER the extract (files the archive does not
   carry; a cancel can never destroy config the box already had) so pvr.iptvsimple
   state exactly equals the archive (the duplicate-instance brick guard). The ONLY
-  sanctioned add-on toggle in boot and restore is the restore-scoped PVR pause
+  sanctioned add-on toggles in boot and restore are the restore-scoped PVR pause
+  and, since 2026.09.26.5, the PVR share step's reload of an ALREADY-enabled
+  pvr.iptvsimple (the share host section above; it rides the same pause marker)
   (Apply Settings Profile, below, is the one OTHER actor allowed to enable
   add-ons): when the
   archive carries IPTV config and pvr.iptvsimple is enabled, restore disables it

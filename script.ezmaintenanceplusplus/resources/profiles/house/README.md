@@ -12,7 +12,11 @@ Layout and rules (the loader enforces all of them; see
   after its dependent). No `default="true"`, no never-apply id
   (`_kodisettings._BOOT_STATE_ONLY`).
 - `sources.xml`: class C source ENTRIES only; merged additively, never copied.
-  Trailing slash required; no port on nfs paths.
+  Trailing slash required; no port on nfs paths. The mini is written as
+  `nfs://@SHARE_HOST@/...`: the token is rendered from
+  `resources/lib/modules/sharehost.py` at load (the tailnet address since
+  2026-09-26), and a file naming a host literally fails validation. The same
+  token rule holds for the overlays' backup and restore folders.
 - `addons.list` + `addons/*.zip`: class D, staged from the official hub zips
   and enabled through Kodi; the repository enables LAST.
 - `nodes.d/*.xml`: guisettings FILE NODES outside the `<setting id>` space

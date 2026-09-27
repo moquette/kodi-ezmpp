@@ -120,6 +120,7 @@ def _startup_sequence(monitor):
     _maybe_fix_pov_reuse_invoker()
     _maybe_hide_autocompletion()
     _maybe_fix_pov_resume_seek()
+    _maybe_migrate_share_host()
     _maybe_restore_check(monitor)
     _maybe_profile_check(monitor)
 
@@ -791,6 +792,76 @@ def _maybe_fix_pov_resume_seek():
             pass
 
 
+def _maybe_migrate_share_host():
+    """Self-heal the share host every boot: this add-on's backup and restore
+    folders and the box's <files> sources move off any legacy address onto
+    sharehost.SHARE_HOST (owner decision 2026-09-26: every box reaches the
+    mini over Tailscale). See profile.ensure_share_host_migrated. Silent
+    when nothing names a legacy host; one INFO line per item moved."""
+    try:
+        from resources.lib.modules import profile as profile_mod
+
+        result = profile_mod.ensure_share_host_migrated()
+        if result["settings"] or result["sources"]:
+            xbmc.log(
+                "ezmaintenanceplus: share host migrated (%s); sources live "
+                "after the next restart" % result["detail"],
+                level=loglevel,
+            )
+        elif result["detail"]:
+            xbmc.log(
+                "ezmaintenanceplus: share host migration: %s" % result["detail"],
+                level=xbmc.LOGWARNING,
+            )
+    except Exception as e:
+        try:
+            xbmc.log(
+                "ezmaintenanceplus: share host migration crashed %s: %s"
+                % (type(e).__name__, e),
+                level=xbmc.LOGWARNING,
+            )
+        except Exception:
+            pass
+
+
+# The PVR share step at boot. It runs AFTER the GUI wait (an NFS listing can
+# block on a dead mount, which must never hold the rest of the startup
+# sequence), and it is OWED again only when it deferred for playback: the
+# maintenance tick retries it on the first tick with nothing playing. An
+# unreachable share is a skip, not a retry, so a box away from the mini does
+# not probe a dead mount every minute.
+_PVR_SHARE_OWED = {"owed": False}
+
+
+def _maybe_sync_pvr_share(playing=None):
+    """One attempt at pvrshare.sync. Returns True when the step RAN (any
+    outcome but the playback deferral), False when it must be retried."""
+    try:
+        from resources.lib.modules import pvrshare
+
+        result = pvrshare.sync(playing=playing)
+        if result["outcome"] == pvrshare.SKIPPED and result["detail"].startswith(
+            "deferred"
+        ):
+            return False
+        if result["outcome"] == pvrshare.ERROR:
+            xbmc.log(
+                "ezmaintenanceplus: PVR share settings: %s" % result["detail"],
+                level=xbmc.LOGWARNING,
+            )
+        return True
+    except Exception as e:
+        try:
+            xbmc.log(
+                "ezmaintenanceplus: PVR share settings crashed %s: %s"
+                % (type(e).__name__, e),
+                level=xbmc.LOGWARNING,
+            )
+        except Exception:
+            pass
+        return True
+
+
 # --------------------------------------------------------------------------- #
 # Scheduled repository update check.
 #
@@ -937,6 +1008,8 @@ def _service_loop(monitor):
                 xbmc.log("ezmaintenanceplus: AutoClean done", level=loglevel)
                 maintenance.determineNextMaintenance()
             _maybe_update_addon_repos(playing=False)
+            if _PVR_SHARE_OWED["owed"]:
+                _PVR_SHARE_OWED["owed"] = not _maybe_sync_pvr_share(playing=False)
 
 
 def _jsonrpc_service(method, params):
@@ -982,6 +1055,12 @@ if __name__ == "__main__":
                 % (type(e).__name__, e),
                 level=xbmc.LOGWARNING,
             )
+
+    # The PVR share step, after the GUI is up (its NFS listing may block on
+    # a dead mount and must not delay the sequence above). Deferred while
+    # something plays; the loop retries it on the next idle tick.
+    if not monitor.abortRequested():
+        _PVR_SHARE_OWED["owed"] = not _maybe_sync_pvr_share()
 
     _arm_repo_check_clock(monitor=monitor)
     _service_loop(monitor)

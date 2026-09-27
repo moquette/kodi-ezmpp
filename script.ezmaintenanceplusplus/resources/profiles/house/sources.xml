@@ -18,12 +18,12 @@
         </source>
         <source>
             <name>KodiShare</name>
-            <path pathversion="1">nfs://192.168.7.2/Users/moquette/Kodi/Share/</path>
+            <path pathversion="1">nfs://@SHARE_HOST@/Users/moquette/Kodi/Share/</path>
             <allowsharing>true</allowsharing>
         </source>
         <source>
             <name>KodiBackup</name>
-            <path pathversion="1">nfs://192.168.7.2/Users/moquette/Kodi/Backup/</path>
+            <path pathversion="1">nfs://@SHARE_HOST@/Users/moquette/Kodi/Backup/</path>
             <allowsharing>true</allowsharing>
         </source>
     </files>

@@ -550,10 +550,12 @@ def _path_detail(setting_id):
 #
 # Measured against the real NotoSans-Regular.ttf at 30px, path text runs about
 # 14.6px per character, and the fleet's own row
-#   "Backup   nfs://192.168.7.2/Users/moquette/Kodi/Backup/fireos/"
-# is 61 characters and 891px - 51px past the edge. That is the overflow this
-# budget exists to stop. 56 characters is roughly 818px and fits, with a little
-# room for a path made of wider-than-average characters.
+#   "Backup   nfs://100.121.59.123/Users/moquette/Kodi/Backup/fireos/"
+# (the mini's tailnet address, sharehost.SHARE_HOST) is 64 characters and
+# 934px - 94px past the edge; the LAN-era row was 61 characters and already
+# 51px over. That is the overflow this budget exists to stop. 56 characters is
+# roughly 818px and fits, with a little room for a path made of
+# wider-than-average characters.
 #
 # It is a readability heuristic, not a contract. A proportional font cannot be
 # budgeted exactly by counting characters, and a pathological path of nothing
