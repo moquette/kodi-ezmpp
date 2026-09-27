@@ -1069,6 +1069,28 @@ def _apply_skin_settings(rlog, target_skin, settings):
     return status
 
 
+def _map_restored_skin(rlog, target):
+    """The skin a restore asserts for an archive naming `target`: the new
+    Estuary++ id in place of the old one when the new skin is installed
+    (skinmigrate.map_restored_skin), with the archive's skin settings copied
+    to the new id's folder first. Anything else passes through unchanged.
+    Never raises; a failure keeps `target` as the archive named it."""
+    try:
+        from resources.lib.modules import skinmigrate
+
+        mapped = skinmigrate.map_restored_skin(target)
+        if mapped and mapped != (target or ""):
+            skinmigrate.carry_restored_settings(control.USERDATA, log=rlog)
+            rlog("boot-skin: archive names %s; restoring as %s" % (target, mapped))
+            return mapped
+    except Exception as e:  # noqa: BLE001 - the archive's own id stands
+        try:
+            rlog("boot-skin: rename mapping failed (%s); keeping %s" % (e, target))
+        except Exception:
+            pass
+    return target
+
+
 def _apply_boot_skin(rlog, target):
     """Write the RESTORED skin to disk. No live switch, no keep-skin dialog.
 
@@ -1646,6 +1668,15 @@ def restore(
             )
         except Exception:
             _boot_skin["settings"] = []
+
+        # The Estuary++ rename (2026-09-27): an archive naming the old skin id
+        # is asserted as the NEW id when the new skin is present, and the
+        # archive's skin settings are copied to the new id's folder so the
+        # restored menu lands where the new skin reads it. The settings list
+        # captured above came from the archive's file and is re-applied live
+        # against the mapped skin. An archive that names anything else, or a
+        # box without the new skin, is untouched.
+        _boot_skin["target"] = _map_restored_skin(_rlog, _boot_skin.get("target"))
 
         # HARD failures: content from the backup that is not on the box. These are the
         # only findings allowed to call a restore a problem to the user.

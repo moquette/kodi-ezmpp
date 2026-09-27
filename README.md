@@ -112,6 +112,45 @@ the legacy LAN address (`192.168.7.2`) wherever a box still carries it.
   (disable/enable)`, and `ezmaintenanceplus: tailnet: ...`.
 - Tests: `tests/test_pvr_share.py`.
 
+## The move to Estuary++ (since 2026.09.27.1)
+
+Owner decision 2026-09-26: the skin Estuary POV (`skin.estuary.pov`) is renamed
+Estuary++ (`skin.estuary.plusplus`). To Kodi a new add-on id is a new add-on,
+so nothing upgrades across the rename by itself. The boot service does it
+(`resources/lib/modules/skinmigrate.py`), one log line per step, idempotent:
+
+- When the active skin is the old id (or the old id is installed and the new
+  one is not), the service installs `skin.estuary.plusplus` through Kodi's own
+  installer (the `InstallAddon` builtin, so the add-on database carries
+  `origin = repository.tony7bones` and the new skin auto-updates), answering
+  Kodi's "Would you like to download this add-on?" confirm itself; copies
+  `addon_data/skin.estuary.pov/settings.xml` to the new id's folder when the
+  target is absent (through `nsud.persist_one`, so both Apple TV layers agree;
+  the skin's setting keys keep their `pov_` prefix, which is what carries the
+  arranged menu across); and switches the skin live, answering Kodi's ten
+  second "Keep skin?" countdown Yes. The verdict is read back from the live
+  skin, never assumed; a miss is logged as an error, Kodi's own revert leaves
+  the box on the old skin, and the next start retries.
+- On the start after the switch, with Estuary++ active and the old skin still
+  installed, the old skin's directory and cached package zips are removed and
+  `UpdateLocalAddons` drops its database row. `addon_data/skin.estuary.pov/`
+  is kept for now.
+- Guards: never while something is playing (the service retries on its next
+  idle tick); a box whose repository index does not offer the new skin yet
+  skips with one line and tries at the next start; nothing at all happens on a
+  box with stock Estuary or no POV skin; the Maintenance setting "Move this
+  box to Estuary++ automatically" (`migrate_skin`, default on) switches it off.
+- Restore: an archive naming the old skin restores onto Estuary++ when the new
+  skin is installed (the archive's skin settings are copied to the new id's
+  folder, then re-applied live as before), and the post-restart skin check
+  accepts either id. Old archives keep restoring.
+- Log lines to look for: `ezmaintenanceplus: skin migration: install: applied
+  -> ...`, `... settings: applied -> settings.xml carried across (N bytes)`,
+  `... switch: applied -> switched to skin.estuary.plusplus (keep-skin dialog
+  answered yes)`, and on the following start `... remove old skin: applied ->
+  skin.estuary.pov removed (...) and dropped from the add-on database`.
+- Tests: `tests/test_skin_migration.py`.
+
 ## tvOS/Apple TV storage hardening (why this add-on is more careful than it looks)
 
 Apple TV stores Kodi's files fundamentally differently from every other platform: the

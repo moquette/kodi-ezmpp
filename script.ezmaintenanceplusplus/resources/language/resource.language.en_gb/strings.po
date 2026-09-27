@@ -128,3 +128,11 @@ msgstr ""
 msgctxt "#30062"
 msgid "Keep repositories"
 msgstr ""
+
+msgctxt "#30063"
+msgid "Move this box to Estuary++ automatically"
+msgstr ""
+
+msgctxt "#30064"
+msgid "Skin"
+msgstr ""

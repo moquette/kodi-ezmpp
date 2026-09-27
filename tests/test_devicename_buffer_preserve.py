@@ -945,6 +945,16 @@ _WINDOW_PROP_RE = re.compile(r"Window\(10000\)\.Property\(([^)]*)\)")
 _OWN_PROP_PREFIXES = ("ezm", "ezmaintenance")
 
 
+# The ONE module allowed to name a skin id, by owner decision 2026-09-26 (the
+# Estuary POV to Estuary++ rename, .claude/plans/estuary-plusplus-rename.md
+# section 3.3): every box migrates itself, and this add-on's boot service is
+# the only thing that runs on every box. skinmigrate.py exists to name exactly
+# the two ids of that rename and nothing else; it is transitional and goes
+# when the old id is retired (plan stage E). The guard still holds for every
+# other file, and the guard's own teeth test below is unchanged.
+_RENAME_EXEMPT = {"skinmigrate.py"}
+
+
 def test_addon_behaviour_names_no_skin_id_and_no_skin_internal_property():
     """The owner's decoupling test, mechanised.
 
@@ -956,6 +966,8 @@ def test_addon_behaviour_names_no_skin_id_and_no_skin_internal_property():
     """
     offenders = []
     for path in _addon_py_files():
+        if path.name in _RENAME_EXEMPT:
+            continue
         tree = ast.parse(path.read_text(), filename=str(path))
         for lineno, s in _non_docstring_strings(tree):
             for tok in _FORBIDDEN_TOKENS:

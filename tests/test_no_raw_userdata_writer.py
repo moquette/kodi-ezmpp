@@ -94,6 +94,15 @@ ALLOWLIST = {
     # _set_devicename ever needs file-half durability on tvOS, it adopts that
     # pattern rather than a bare persist_one.
     ("tools.py", "_set_devicename"),
+    # skinmigrate.carry_restored_settings runs INSIDE a restore, at the extract
+    # stage, copying the archive's just-extracted addon_data/<old skin>/settings.xml
+    # to the new skin id's folder (the 2026-09-27 rename). It is the same class
+    # of write as the extract itself: the restore's own nsud.rewrite_userdata_xml
+    # pass runs after it and vectors the file on tvOS. A persist_one here would
+    # DROP the POSIX copy that wiz reads next to re-apply the values live
+    # (defect A's in-memory half), so the raw copy is the correct shape. The
+    # boot-time copy in the same module (carry_settings) does persist.
+    ("skinmigrate.py", "carry_restored_settings"),
 }
 
 

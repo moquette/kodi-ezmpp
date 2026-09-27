@@ -137,7 +137,7 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
   `generate_repo.py` and the skin repo's `build_skin.py`. `./build.sh --check` builds
   twice and byte-compares.
 - **Tests are mandatory before any release.** Run
-  `/opt/homebrew/bin/python3 -m pytest tests/ -q` (856 tests + 3 xfail, measured 2026-09-26; the
+  `/opt/homebrew/bin/python3 -m pytest tests/ -q` (923 tests + 3 xfail, measured 2026-09-27; the
   system `python3` on this machine is 3.9, too old for this suite), and
   `ruff check tests/ tools/` must also be clean.
 - **Tool versions are pinned in `requirements-ci.txt` and `ruff.toml`**, which CI
@@ -255,6 +255,56 @@ home router's DHCP address. The mini's tailnet address is fixed by Tailscale.
   restore-scoped PVR pause: bounded, always re-enables, only when the client
   was already enabled, reported loudly when it fails. Read the backup/restore
   contract's "one bounded toggle" line with this exception in mind.
+
+## The skin migration to Estuary++ (since 2026.09.27.1)
+
+Owner decision 2026-09-26: Estuary POV (`skin.estuary.pov`) became Estuary++
+(`skin.estuary.plusplus`), and every box migrates itself. The whole mechanism
+is `resources/lib/modules/skinmigrate.py`; `service.py` only calls it
+(`_maybe_migrate_skin`, after the GUI wait and before the PVR share step, owed
+again on the next idle tick only when it deferred for playback).
+
+- **This is the ONE module allowed to name a skin id.** The owner's decoupling
+  guard (`tests/test_devicename_buffer_preserve.py`, `_RENAME_EXEMPT`) exempts
+  exactly `skinmigrate.py`, with the reason; `service.py` stays skin-agnostic
+  and its own token test still holds. The module is transitional and goes when
+  the old id is retired from the hub (the rename plan's stage E).
+- **Install goes through `InstallAddon`**, Kodi's own installer, NOT the
+  profile's extract-and-enable path: the installer stamps `installed.origin`
+  with the repository id (AddonInstaller.cpp, "Write origin to database via
+  addon manager"), and a blank origin is an add-on Kodi never updates. The
+  builtin's confirm (strings 24076/24100/24101) is answered by the profile's
+  measured mechanism (text match on `Control.GetLabel(9)`, walk to control 11,
+  select). The install is modal, so `CSkinInfo::OnPostInstall` raises no
+  "switch to this skin?" prompt of its own (Skin.cpp gates it on `!modal`).
+  The id is resolved first through `Addons.GetAddons` with `installed=false`
+  (JSON-RPC's route to `GetInstallableAddons`); a hub that does not list it is
+  a one-line skip.
+- **The settings copy is a byte copy read through the VFS**, written atomically
+  and persisted with `nsud.persist_one`, only when the target is absent. The
+  skin saves its settings to disk 500 ms after any change (Skin.cpp,
+  `CSkinSettingUpdateHandler`, `DELAY = 500ms`), so the copy is the live state.
+- **The switch is live** (`Settings.SetSettingValue lookandfeel.skin`) with the
+  "Keep skin?" dialog (13123/13111, 10 s, ApplicationSkinHandling.cpp
+  `ReloadSkin(confirm)`) answered Yes by the same watcher, and the verdict read
+  back from `xbmc.getSkinDir()`. The shutdown-window write was NOT chosen
+  because it only lands at the next Kodi start and an appliance can run for
+  days; the live switch lands when the release does. A miss is an `error` in
+  the log; Kodi's own revert leaves the old skin, and the next start retries.
+  Never let that dialog time out (atv2, 2026-07-17).
+- **Removal waits a start**: with Estuary++ active and the old skin present,
+  `shutil.rmtree` of its directory plus its `packages/` zips, then
+  `UpdateLocalAddons` so `CAddonDatabase::SyncInstalled` drops the row.
+  `addon_data/skin.estuary.pov/` stays until stage E.
+- **Restore mapping**: `wiz._map_restored_skin` (after the archive's skin
+  settings are captured, before the boot-skin write and the restore-check
+  marker) maps the old id to the new one when the new skin is present and
+  copies the archive's settings file to the new folder (a raw copy at the
+  extract stage, allowlisted in `test_no_raw_userdata_writer.py` because the
+  restore's own re-vector pass follows it and a persist there would drop the
+  POSIX copy wiz reads next). `service._skin_ids_match` accepts either id.
+- Setting `migrate_skin` (Maintenance, group Skin, default true). Tests:
+  `tests/test_skin_migration.py`.
 
 ## The tvOS/Apple TV storage rules (read before touching `nsud.py`/`nsub.py`/`wiz.py`)
 

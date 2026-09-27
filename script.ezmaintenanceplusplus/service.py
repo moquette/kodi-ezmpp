@@ -273,6 +273,19 @@ def _startup_checks(monitor=None):
         maintenance.clearCache()
 
 
+def _skin_ids_match(live, expected):
+    """The restored-skin comparison, rename-aware: the old and new Estuary++
+    ids count as the same skin (skinmigrate.same_skin), so a restore of an
+    archive from before the rename onto a migrated box is not a finding.
+    Falls back to plain equality when the module cannot be imported."""
+    try:
+        from resources.lib.modules import skinmigrate
+
+        return bool(skinmigrate.same_skin(live, expected))
+    except Exception:
+        return live == expected
+
+
 def _maybe_restore_check(monitor):
     """On the FIRST boot after a restore, re-verify the restored state now that it is
     actually LIVE (restorecheck's two-layer probes). SILENT on a clean pass - the box
@@ -316,7 +329,7 @@ def _maybe_restore_check(monitor):
             expected = tools.restore_check_expected_skin()
             if expected:
                 live = (xbmc.getSkinDir() or "").strip()
-                if live and live != expected:
+                if live and not _skin_ids_match(live, expected):
                     attention.append(
                         "restored skin did not become live: expected %s, running %s "
                         "(the restored skin and its settings are installed and intact; "
@@ -862,6 +875,46 @@ def _maybe_sync_pvr_share(playing=None):
         return True
 
 
+# The skin migration at boot (resources/lib/modules/skinmigrate.py): a box on
+# the old Estuary POV id installs Estuary++ from the repository, carries the
+# menu across and switches; a box already on Estuary++ removes the old skin.
+# Runs AFTER the GUI wait (it answers Kodi's own confirms on screen) and
+# BEFORE the PVR share step. Owed again only when it deferred for playback;
+# every other outcome, including a skip because the repository does not
+# carry the new skin yet, is retried at the next start rather than every
+# tick.
+_SKIN_MIGRATION_OWED = {"owed": False}
+
+
+def _maybe_migrate_skin(playing=None):
+    """One attempt at skinmigrate.run. Returns True when the step RAN (any
+    outcome but the playback deferral), False when it must be retried."""
+    try:
+        from resources.lib.modules import skinmigrate
+
+        result = skinmigrate.run(playing=playing)
+        if result["outcome"] == skinmigrate.SKIPPED and result["detail"].startswith(
+            "deferred"
+        ):
+            return False
+        if result["outcome"] == skinmigrate.ERROR:
+            xbmc.log(
+                "ezmaintenanceplus: skin migration: %s" % result["detail"],
+                level=xbmc.LOGWARNING,
+            )
+        return True
+    except Exception as e:
+        try:
+            xbmc.log(
+                "ezmaintenanceplus: skin migration crashed %s: %s"
+                % (type(e).__name__, e),
+                level=xbmc.LOGWARNING,
+            )
+        except Exception:
+            pass
+        return True
+
+
 # --------------------------------------------------------------------------- #
 # Scheduled repository update check.
 #
@@ -1008,6 +1061,8 @@ def _service_loop(monitor):
                 xbmc.log("ezmaintenanceplus: AutoClean done", level=loglevel)
                 maintenance.determineNextMaintenance()
             _maybe_update_addon_repos(playing=False)
+            if _SKIN_MIGRATION_OWED["owed"]:
+                _SKIN_MIGRATION_OWED["owed"] = not _maybe_migrate_skin(playing=False)
             if _PVR_SHARE_OWED["owed"]:
                 _PVR_SHARE_OWED["owed"] = not _maybe_sync_pvr_share(playing=False)
 
@@ -1055,6 +1110,12 @@ if __name__ == "__main__":
                 % (type(e).__name__, e),
                 level=xbmc.LOGWARNING,
             )
+
+    # The skin migration, after the GUI is up (it answers Kodi's own confirms
+    # on screen). Deferred while something plays; the loop retries it on the
+    # next idle tick.
+    if not monitor.abortRequested():
+        _SKIN_MIGRATION_OWED["owed"] = not _maybe_migrate_skin()
 
     # The PVR share step, after the GUI is up (its NFS listing may block on
     # a dead mount and must not delay the sequence above). Deferred while

@@ -85,6 +85,13 @@
 					<control type="slider" format="integer" />
 				</setting>
 			</group>
+			<group id="6" label="30064">
+				<setting id="migrate_skin" type="boolean" label="30063">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle" />
+				</setting>
+			</group>
 		</category>
 
 		<category id="backup_restore" label="30002">

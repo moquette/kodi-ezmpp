@@ -1,3 +1,14 @@
+v2026.09.27.1
+- The skin is now Estuary++. A box still on Estuary POV moves itself
+  across the next time it starts: it installs Estuary++ from the
+  repository, carries the arranged menu and every skin setting over,
+  and switches, all before you see the home screen settle. On the
+  start after that it removes the old skin. Nothing to do by hand; a
+  restore of an older backup lands on Estuary++ too. If something is
+  playing when the box starts, the move waits for the next quiet
+  minute. A switch in this add-on's Maintenance settings turns the
+  move off, should you ever want that.
+
 v2026.09.26.6
 - The speed test now runs against a server near the box, so its ping
   and upload figures mean something. The list of servers it used to
