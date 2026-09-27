@@ -227,7 +227,14 @@ home router's DHCP address. The mini's tailnet address is fixed by Tailscale.
   anything changed it reloads the client ONCE via `Addons.SetAddonEnabled`
   false then true, bracketed by the restore's PVR pause marker so a crash
   between the two calls is healed by `_maybe_resume_paused_pvr`. It never
-  enables a client the box had off. Guards: unreachable share or no instance
+  enables a client the box had off. MEASURED on office 2026-09-26 (kodi.log):
+  the toggle at 17:24:34 produced `Recreating PVR client: addonId=pvr.iptvsimple,
+  instanceId=1` and `instanceId=2` at 17:24:49 and 17:24:54, after which
+  pvr.iptvsimple loaded `customTVGroups-*.xml` from `nfs://100.121.59.123/`
+  where the 17:11 boot had loaded them from `nfs://192.168.7.2/`; live TV
+  played after it (A&E, speed 1, time advancing). That is the proof the
+  disable/enable is honoured; no PVR manager restart exists to compare
+  against. Guards: unreachable share or no instance
   files is a `skipped` (nothing touched, one log line); a template that is not
   utf-8, not XML or not `<settings>` is never written; nothing runs while
   something plays (the service retries on its next idle tick, the profile
