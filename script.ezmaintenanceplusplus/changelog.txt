@@ -1,3 +1,17 @@
+v2026.09.26.6
+- The speed test now runs against a server near the box, so its ping
+  and upload figures mean something. The list of servers it used to
+  read from speedtest.net now hands back ten servers picked with no
+  regard to where the box is, which is how the office box came to
+  test against a server in Mexico 2971 km away with a 117 ms ping.
+  The test now asks speedtest.net for the servers nearest the box's
+  own location, pings the five closest and keeps the best, so a
+  Sacramento box tests against Roseville or Sacramento a few
+  kilometres away; the old list is only consulted if that request
+  fails. Two warnings the new Python printed into the log on every
+  run are gone as well. Nothing else changed: backups, restores and
+  the custom menu are untouched.
+
 v2026.09.26.5
 - The boxes now reach the mini over Tailscale for the share, backups
   and the channel settings, so everything works away from home and

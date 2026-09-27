@@ -52,14 +52,26 @@ dp.create('Speedtest by Ookla', 'INITIALIZING...')
 downloadString = '0'
 
 class FakeShutdownEvent(object):
-    """Class to fake a threading.Event.isSet so that users of this module
+    """Class to fake a threading.Event.is_set so that users of this module
     are not required to register their own threading.Event()
     """
 
     @staticmethod
-    def isSet():
+    def is_set():
         "Dummy method to always return false"""
         return False
+
+
+# speedtest.net's legacy XML server lists (the ``urls`` in ``get_servers``)
+# now answer with a batch of ten servers chosen server-side with no regard to
+# where the client is. MEASURED 2026-09-26: a client in California was handed
+# eight Denver servers, and the office box in Sacramento tested against a
+# Mexican server 2971 km away because that was the best of its ten. The
+# distance sort below can only rank what it is given, so the JSON API, which
+# takes the client's own coordinates and answers with the nearest servers, is
+# asked first; the XML lists remain the fallback when it is unavailable.
+SERVER_LIST_JSON = ('https://www.speedtest.net/api/js/servers'
+                    '?engine=js&limit=%d&lat=%s&lon=%s')
 
 
 # Some global variables we use
@@ -694,7 +706,7 @@ def print_dots(shutdown_event):
     status
     """
     def inner(current, total, start=False, end=False):
-        if shutdown_event.isSet():
+        if shutdown_event.is_set():
             return
 
         sys.stdout.write('.')
@@ -733,7 +745,7 @@ class HTTPDownloader(threading.Thread):
         try:
             if (timeit.default_timer() - self.starttime) <= self.timeout:
                 f = self._opener(self.request)
-                while (not self._shutdown_event.isSet() and
+                while (not self._shutdown_event.is_set() and
                         (timeit.default_timer() - self.starttime) <=
                         self.timeout):
                     self.result.append(len(f.read(10240)))
@@ -787,7 +799,7 @@ class HTTPUploaderData(object):
 
     def read(self, n=10240):
         if ((timeit.default_timer() - self.start) <= self.timeout and
-                not self._shutdown_event.isSet()):
+                not self._shutdown_event.is_set()):
             chunk = self.data.read(n)
             self.total.append(len(chunk))
             return chunk
@@ -825,7 +837,7 @@ class HTTPUploader(threading.Thread):
         request = self.request
         try:
             if ((timeit.default_timer() - self.starttime) <= self.timeout and
-                    not self._shutdown_event.isSet()):
+                    not self._shutdown_event.is_set()):
                 try:
                     f = self._opener(request)
                 except TypeError:
@@ -869,7 +881,11 @@ class SpeedtestResults(object):
         self.client = client or {}
 
         self._share = None
-        self.timestamp = '%sZ' % datetime.datetime.utcnow().isoformat()
+        self.timestamp = '%sZ' % (
+            datetime.datetime.now(datetime.timezone.utc)
+            .replace(tzinfo=None)
+            .isoformat()
+        )
         self.bytes_received = 0
         self.bytes_sent = 0
 
@@ -1143,6 +1159,101 @@ class Speedtest(object):
 
         return self.config
 
+    def _add_server(self, attrib, servers, exclude):
+        """Apply the id filters to one server record and file it under its
+        distance from the client. Returns True when it was filed.
+        """
+        try:
+            sid = int(attrib.get('id'))
+        except (TypeError, ValueError):
+            return False
+
+        if servers and sid not in servers:
+            return False
+
+        if sid in self.config['ignore_servers'] or sid in exclude:
+            return False
+
+        try:
+            d = distance(self.lat_lon,
+                         (float(attrib.get('lat')),
+                          float(attrib.get('lon'))))
+        except Exception:
+            return False
+
+        attrib['d'] = d
+
+        try:
+            self.servers[d].append(attrib)
+        except KeyError:
+            self.servers[d] = [attrib]
+        return True
+
+    def get_servers_json(self, servers=None, exclude=None, limit=10):
+        """Ask the speedtest.net JSON API for the ``limit`` servers nearest
+        the client's own coordinates and file them like ``get_servers``.
+        Returns how many were filed; 0 means the API could not be used and
+        the caller falls back to the XML lists.
+        """
+        if json is None or HTTPSConnection is None:
+            return 0
+
+        headers = {}
+        if gzip:
+            headers['Accept-Encoding'] = 'gzip'
+
+        try:
+            request = build_request(
+                SERVER_LIST_JSON % (limit, self.lat_lon[0], self.lat_lon[1]),
+                headers=headers
+            )
+            uh, e = catch_request(request, opener=self._opener)
+            if e:
+                raise ServersRetrievalError(e)
+
+            stream = get_response_stream(uh)
+            chunks = []
+            while 1:
+                chunk = stream.read(1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            stream.close()
+            uh.close()
+
+            if int(uh.code) != 200:
+                raise ServersRetrievalError('HTTP %s' % uh.code)
+
+            records = json.loads(''.encode().join(chunks).decode('utf-8'))
+        except (ServersRetrievalError, ValueError, OSError,
+                EOFError) + HTTP_ERRORS:
+            printer('JSON server list unavailable: %r' % (get_exception(),),
+                    debug=True)
+            return 0
+
+        if not isinstance(records, list):
+            return 0
+
+        count = 0
+        for record in records:
+            if isinstance(record, dict):
+                if self._add_server(dict(record), servers or [], exclude or []):
+                    count += 1
+        return count
+
+    def log_candidates(self, source, limit=10):
+        """One line in kodi.log naming the servers the pick is made from."""
+        lines = []
+        for d in sorted(self.servers.keys()):
+            for s in self.servers[d]:
+                lines.append('%s %s (%s) %.0f km' % (
+                    s.get('id'), s.get('sponsor'), s.get('name'), d))
+                if len(lines) == limit:
+                    break
+            if len(lines) == limit:
+                break
+        print('Speedtest servers from %s: %s' % (source, '; '.join(lines)))
+
     def get_servers(self, servers=None, exclude=None):
         """Retrieve a the list of speedtest.net servers, optionally filtered
         to servers matching those specified in the ``servers`` argument
@@ -1163,6 +1274,10 @@ class Speedtest(object):
                     raise InvalidServerIDType(
                         '%s is an invalid server type, must be int' % s
                     )
+
+        if self.get_servers_json(servers, exclude):
+            self.log_candidates('the JSON API')
+            return self.servers
 
         urls = [
             '://www.speedtest.net/speedtest-servers-static.php',
@@ -1214,7 +1329,7 @@ class Speedtest(object):
                     buf = ''.encode().join(serversxml)
                     try:
                         root = ET.fromstring(buf)
-                        elements = root.getiterator('server')
+                        elements = root.iter('server')
                     except AttributeError:
                         root = DOM.parseString(buf)
                         elements = root.getElementsByTagName('server')
@@ -1227,26 +1342,7 @@ class Speedtest(object):
                     except AttributeError:
                         attrib = dict(list(server.attributes.items()))
 
-                    if servers and int(attrib.get('id')) not in servers:
-                        continue
-
-                    if (int(attrib.get('id')) in self.config['ignore_servers']
-                            or int(attrib.get('id')) in exclude):
-                        continue
-
-                    try:
-                        d = distance(self.lat_lon,
-                                     (float(attrib.get('lat')),
-                                      float(attrib.get('lon'))))
-                    except Exception:
-                        continue
-
-                    attrib['d'] = d
-
-                    try:
-                        self.servers[d].append(attrib)
-                    except KeyError:
-                        self.servers[d] = [attrib]
+                    self._add_server(attrib, servers, exclude)
 
                 break
 
@@ -1256,6 +1352,7 @@ class Speedtest(object):
         if (servers or exclude) and not self.servers:
             raise NoMatchedServers()
 
+        self.log_candidates('the XML list')
         return self.servers
 
     def set_mini_server(self, server):
@@ -1902,6 +1999,15 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    finally:
+        # Release the module-level progress dialog before the interpreter is
+        # torn down, so Kodi's invoker has no DialogProgress left to report.
+        try:
+            dp.close()
+        except Exception:
+            pass
+        del dp
 
 
