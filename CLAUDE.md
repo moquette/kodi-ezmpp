@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## HARD RULE: you may not say something is impossible on Apple TV
 
-**Read `~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md` before claiming
+**Read `~/Code/kodi/.claude/skills/apple-tv/SKILL.md` before claiming
 you cannot do something on a tvOS box.** One file, dispatch index in section 0.
 Everything this project has ever needed is in it and proven on hardware: how to
 wake a box that is OFF (section 7, you reboot it), how to read the logs
@@ -42,6 +42,12 @@ These are the whole standard. There is no skill to load.
 - Never let an inline code span cross a line break. It strips the
   list-continuation indent and leaves the next agent editing a stale copy.
 - Markdown is deliberately NOT auto-formatted here. Do not add it back.
+- Living docs are gated by `.github/doccheck.py` in CI (a byte-identical copy
+  of the meta root's `bin/doccheck`, also run by `../bin/check-all`): retired
+  names, dead links and paths, unresolved section signs, dashes, stale add-on
+  versions. The rules, and the rule that a rename adds the old name to the
+  retired list in the same commit: the meta-root `CLAUDE.md`, "Doc drift is a
+  gate".
 
 
 ## Where things stand
@@ -50,7 +56,7 @@ There is no tracker. `TASKS.md` was deleted 2026-07-21 along with the rest of
 the fleet process. `git log` is the load-bearing fact. Both 2026-07-18 restore
 defects are FIXED IN CODE; what survives them is summarized below.
 
-**For anything Apple TV, read `~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md`.**
+**For anything Apple TV, read `~/Code/kodi/.claude/skills/apple-tv/SKILL.md`.**
 
 ### The two restore defects - both FIXED, one residue OPEN BY DESIGN
 
@@ -112,7 +118,7 @@ truth**: the add-on source, its full test suite, and the build/release tooling l
 here and only here.
 
 **Distribution stays in the sibling repo** (remote
-`tony7bones/tony7bones.github.io`, local checkout `~/Code/moquette/kodi/repo`;
+`tony7bones/tony7bones.github.io`, local checkout `~/Code/kodi/repo`;
 the standalone `~/Code/moquette/tony7bones.github.io` path older docs cite DOES
 NOT EXIST). A version bump pushed to `main` here IS the release: CI
 (`.github/workflows/ci.yml`, `publish` job) builds the deterministic zip,
@@ -129,7 +135,7 @@ belonged to the retired dynamic-proxy design.
 Until 2026-07-14 the source was hand-synced between both repos and the copies
 drifted, the hub's copy holding the tests and the real fixes while this one went
 stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
-`~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md`.
+`~/Code/kodi/.claude/skills/apple-tv/SKILL.md`.
 
 ## The build/test/release contract
 
@@ -313,7 +319,7 @@ Apple TV shadows certain userdata `.xml` files into NSUserDefaults; a key SHADOW
 disk file, it does not mirror it, and Kodi never copies a key back to disk. Getting
 this wrong has destroyed real user data twice (2026-07-08, 2026-07-14). The
 authoritative model (with exact Kodi source citations) lives in the fleet meta
-repo: `~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md`. Three
+repo: `~/Code/kodi/.claude/skills/apple-tv/SKILL.md`. Three
 mechanical guards in this repo enforce the lessons - do not remove or route around
 them without understanding why they exist:
 
@@ -426,9 +432,10 @@ two-layer wipe and the purge exist BECAUSE of those facts.
   is a normal target and the rule must not be reinstated.
 - **Always pin `adb -s <ip>:5555`.** Several boxes sit on adb at once, so an
   unpinned command lands on whichever one adb happens to pick.
-  `repo/_tools/firetv.sh` lost its silent `192.168.7.162` default on
-  2026-07-21: it now needs an alias or `FIRETV_IP` and echoes the target it
-  resolved. Check what it points at before running it.
+  The hub's old `_tools/firetv.sh` was deleted 2026-09-26; the dev helper is
+  the meta root's `.claude/scripts/firetv-deploy.sh`, which takes an alias or
+  an IP and echoes the target it resolved. Check what it points at before
+  running it.
 - Safety core, unchanged: a backup must contain what it claims (one
   archive-contents inspection when backup/restore code changes); CI green before
   deploy; skins install from the Kodi repo, never adb/devicectl push.

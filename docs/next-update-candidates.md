@@ -85,7 +85,7 @@ confirms `readfactor` has never been modified on any box.
   and backups, not video.
 - **Travel sticks are not a counter-example.** Only lightweight IPTV artifacts
   cross the tailnet; video goes device to provider directly
-  (`docs/static-repo-and-tailscale.md:265-268`).
+  (`docs/static-repo-and-tailscale.md:265-268` in the meta repo, deleted there by `15fa40f`; read it at `15fa40f^`).
 - **No recorded playback complaint exists.** A repo-wide grep for
   stutter/rebuffer/stall/freeze/choppy/dropped-frames returns zero hits, and
   `readfactor|filecache|buffermode` returns nothing repo-wide.
@@ -220,7 +220,7 @@ deferred EZM++ item found in the tree when this queue opened.
 ### Project doctrine (governs anything in this queue)
 
 > **Sibling-repo paths.** Everything prefixed `repo/` below lives in
-> `tony7bones/tony7bones.github.io` (local checkout `~/Code/moquette/kodi/repo`),
+> `tony7bones/tony7bones.github.io` (local checkout `~/Code/kodi/repo`),
 > a DIFFERENT git repo. A standalone clone of this add-on cannot reach them; the
 > critical parts are inlined in this repo's `TASKS.md`.
 
@@ -230,7 +230,7 @@ deferred EZM++ item found in the tree when this queue opened.
 | `repo/docs/plans/atv-every-boot-settings-reassert.md` | REJECTED every-boot re-assert design (do not re-propose) plus the corrected fix that became `nsud.rewrite_userdata_xml`, with its open caveats. |
 | `repo/docs/playbooks/ezm-restore-hardening.md` | The 2026.07.07.x restore hardening and the Fire OS 8 progress-text SIGSEGV lesson. |
 | `repo/docs/playbooks/kodi-vfs-cannot-read-foreign-local-files.md` | Why stash/marker I/O uses plain Python, not `xbmcvfs`. |
-| `~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md` | The tvOS playbook: storage model (§8), the Caches purge (§9), the four I/O bugs (§11). Absorbed the `kodi-storage-map` and `ezm-backup-doctor` skills, both deleted 2026-07-21. |
+| `~/Code/kodi/.claude/skills/apple-tv/SKILL.md` | The tvOS playbook: storage model (§8), the Caches purge (§9), the four I/O bugs (§11). Absorbed the `kodi-storage-map` and `ezm-backup-doctor` skills, both deleted 2026-07-21. |
 | `repo/docs/agent-postmortem-do-not-repeat.md` | Process failures not to repeat. |
 | `ezmpp/CLAUDE.md` | Backup/restore contract, tvOS storage rules, the three mechanical guards. |
 | `ezmpp/docs/restore-defects-2026-07-18.md` | History: the two 2026-07-18 restore defects (both since fixed, §4), root cause, fix plan, task breakdown. |
@@ -286,9 +286,9 @@ Verified absent in Omega: `cacheReadFactor`, `readfactor`, `cachechunksize`,
 | EZM++ deletes advancedsettings.xml with a `<cache>` block | `script.ezmaintenanceplusplus/resources/lib/modules/tools.py:139-149`, invoked `:188` |
 | Buffer menu, 400 MB warning threshold | `script.ezmaintenanceplusplus/resources/lib/modules/tools.py:152-193`, `:179-185` |
 | Backup contract ("full means full", PVR pause, two-layer tvOS capture) | `ezmpp/CLAUDE.md` |
-| Only IPTV artifacts cross the tailnet; video goes direct to provider | `docs/static-repo-and-tailscale.md:265-268` |
-| Home upload would bind only under exit-node streaming (unmeasured) | `docs/static-repo-and-tailscale.md:107-108` |
-| Travel sticks: Fire TV Stick 4K Max, AFTKRT, Fire OS on Android 11 | `docs/static-repo-and-tailscale.md:308-332` |
+| Only IPTV artifacts cross the tailnet; video goes direct to provider | meta repo `docs/static-repo-and-tailscale.md:265-268` (deleted by `15fa40f`; read it at `15fa40f^`) |
+| Home upload would bind only under exit-node streaming (unmeasured) | meta repo `docs/static-repo-and-tailscale.md:107-108` (at `15fa40f^`) |
+| Travel sticks: Fire TV Stick 4K Max, AFTKRT, Fire OS on Android 11 | meta repo `docs/static-repo-and-tailscale.md:308-332` (at `15fa40f^`) |
 | `max_connections=1` named the dominant IPTV failure mode | `iptv/docs/iptv-stream-troubleshooting.md:37`, `:271` |
 | Automatic mirror failover listed as an unimplemented improvement | `iptv/docs/iptv-stream-troubleshooting.md:291` |
 | Stage D deferral | `ezmpp/docs/ui-consistency-plan.md:4-5`, `:18`, `:242` |

@@ -54,6 +54,16 @@ jobs:
       - name: Lint (tests + tooling)
         run: ruff check tests/ tools/
 
+      # Documentation drift: retired names, dead links and paths, unresolved
+      # section signs, banned dashes and stale add-on versions in this repo's
+      # living docs. .github/doccheck.py + .github/doccheck.json are a
+      # byte-identical copy of the meta root's bin/doccheck (moquette/kodi is
+      # private, so this public repo cannot fetch it); the meta root's
+      # tests/test_doccheck.py fails when the copy drifts.
+      # The publish job needs this one, so docs that drifted block the release.
+      - name: Documentation drift (doccheck)
+        run: python3 .github/doccheck.py --repo .
+
       # Deliberately a WARNING, never a failure. Releasing is a version bump:
       # the publish job below cuts the release the first time it sees a version
       # with no tag, and is a no-op by tag after that. So a fix committed without

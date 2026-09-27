@@ -14,7 +14,7 @@ replaced it: the Tony.7.Bones repo carries NO copy of this add-on and resolves
 its latest GitHub Release at build time. Fix bugs and add tests here; a version
 bump pushed to `main` is the release, and releasing IS publishing. Triage guide
 for backup/restore failures on tvOS:
-`~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md` (the old
+`~/Code/kodi/.claude/skills/apple-tv/SKILL.md` (the old
 `ezm-backup-doctor` skill was deleted 2026-07-21).
 
 ## Why this fork exists
@@ -163,7 +163,7 @@ a 2026-07-14 incident where an overly broad vectoring rule deleted the POSIX cop
 skin's customized main-menu data, which the skin then couldn't read back (fixed in
 `nsud.py`'s `_should_vector`, scoped to exactly what Kodi's VFS actually reads). The full
 storage model (with exact Kodi source citations) lives in the fleet meta repo's
-`~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md` (§8, the storage model; the
+`~/Code/kodi/.claude/skills/apple-tv/SKILL.md` (§8, the storage model; the
 old `kodi-storage-map` skill was merged into it 2026-07-21) - read it before touching `nsud.py`,
 `nsub.py`, or `wiz.py`.
 
@@ -235,7 +235,7 @@ build resolves the latest release and serves it under `/static/` (since
 2026-09-26; there is no hosted metadata to bump there any more). A box picks
 it up on its next repository check (hourly, see the scheduled check above).
 Confirm a release went live with
-`~/Code/moquette/kodi/.claude/skills/update/SKILL.md` §1.
+`~/Code/kodi/.claude/skills/update/SKILL.md` §1.
 
 `tools/release.sh` is the OFFLINE RE-CUT ONLY, for the case where CI could not
 publish. It is not the normal path.
