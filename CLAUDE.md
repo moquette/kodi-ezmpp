@@ -68,7 +68,7 @@ list loads. MEASURED on office 2026-09-26: the normal remote path (Home tile
 into Program add-ons, EZ Maintenance++) logged it once at 20:36:21 and not at
 20:27:42, and `Addons.ExecuteAddon` logged it at 20:29:48; Estuary++'s
 `MyPrograms.xml` and `View_55_WideList.xml` are byte-identical to stock
-Estuary 4.1.0.
+Estuary 4.1.0. Reported upstream 2026-09-26 as https://github.com/xbmc/xbmc/issues/29426; nothing to change here unless Kodi fixes it.
 
 ### The two restore defects - both FIXED, one residue OPEN BY DESIGN
 
