@@ -28,7 +28,11 @@ import datetime
 import platform
 import threading
 import xml.parsers.expat
-from backtothefuture import unicode, PY2
+try:
+    from resources.lib.modules.backtothefuture import unicode, PY2
+except ImportError:
+    # Run as a standalone script, the modules directory is on sys.path.
+    from backtothefuture import unicode, PY2
 
 try:
     import gzip
@@ -37,9 +41,15 @@ except ImportError:
     gzip = None
     GZIP_BASE = object
 
+# ElementTree is the parser. minidom is the fallback ONLY when ElementTree
+# cannot be imported, as upstream speedtest-cli has it. The fork used to null
+# ET unconditionally a few lines further down, most likely because upstream
+# 2.0.0's server parser used the Element getiterator method, which 3.9
+# removed; that call is root.iter() now, so the reason is gone.
 try:
     import xml.etree.ElementTree as ET
-except:
+    DOM = None
+except ImportError:
     from xml.dom import minidom as DOM
     ET = None
 
@@ -47,8 +57,9 @@ __version__ = '2.0.0'
 
 import time
 import xbmcgui, xbmcaddon
-dp = xbmcgui.DialogProgress()
-dp.create('Speedtest by Ookla', 'INITIALIZING...')
+# The progress dialog is created by run(), not at import: the add-on imports
+# this module in-process, and a dialog made at import would outlive the run.
+dp = None
 downloadString = '0'
 
 class FakeShutdownEvent(object):
@@ -87,9 +98,6 @@ except ImportError:
     except ImportError:
         json = None
 
-
-from xml.dom import minidom as DOM
-ET = None
 
 try:
     from urllib2 import (urlopen, Request, HTTPError, URLError,
@@ -1093,20 +1101,23 @@ class Speedtest(object):
         buf = ''.encode().join(configxml)
 
         try:
-            root = ET.fromstring(buf)
-            server_config = root.find('server-config').attrib
-            download = root.find('download').attrib
-            upload = root.find('upload').attrib
-            # times = root.find('times').attrib
-            client = root.find('client').attrib
-
-        except:
-            root = DOM.parseString(buf)
-            server_config = get_attributes_by_tag_name(root, 'server-config')
-            download = get_attributes_by_tag_name(root, 'download')
-            upload = get_attributes_by_tag_name(root, 'upload')
-            # times = get_attributes_by_tag_name(root, 'times')
-            client = get_attributes_by_tag_name(root, 'client')
+            if ET is not None:
+                root = ET.fromstring(buf)
+                server_config = root.find('server-config').attrib
+                download = root.find('download').attrib
+                upload = root.find('upload').attrib
+                # times = root.find('times').attrib
+                client = root.find('client').attrib
+            else:
+                root = DOM.parseString(buf)
+                server_config = get_attributes_by_tag_name(root, 'server-config')
+                download = get_attributes_by_tag_name(root, 'download')
+                upload = get_attributes_by_tag_name(root, 'upload')
+                # times = get_attributes_by_tag_name(root, 'times')
+                client = get_attributes_by_tag_name(root, 'client')
+        except (SyntaxError, xml.parsers.expat.ExpatError, AttributeError,
+                IndexError):
+            raise ConfigRetrievalError(get_exception())
 
         try:
           ignore_servers = list(
@@ -1327,10 +1338,10 @@ class Speedtest(object):
                 try:
                     #buf = ''.join(serversxml)
                     buf = ''.encode().join(serversxml)
-                    try:
+                    if ET is not None:
                         root = ET.fromstring(buf)
                         elements = root.iter('server')
-                    except AttributeError:
+                    else:
                         root = DOM.parseString(buf)
                         elements = root.getElementsByTagName('server')
                 except (SyntaxError, xml.parsers.expat.ExpatError):
@@ -1669,7 +1680,7 @@ def csv_header(delimiter=','):
     sys.exit(0)
 
 
-def parse_args():
+def parse_args(argv=None):
     """Function to handle building and parsing of command line arguments"""
     description = (
         'Command line interface for testing internet bandwidth using '
@@ -1743,7 +1754,9 @@ def parse_args():
     parser.add_argument('--debug', action='store_true',
                         help=ARG_SUPPRESS, default=ARG_SUPPRESS)
 
-    options = parser.parse_args()
+    # An explicit argv: in-process the add-on's sys.argv is the plugin URL,
+    # handle and querystring, which argparse would reject.
+    options = parser.parse_args(argv)
     if isinstance(options, tuple):
         args = options[0]
     else:
@@ -1817,13 +1830,13 @@ def printer(string, quiet=False, debug=False, error=False, timer=False, **kwargs
         except:pass
 
 
-def shell():
+def shell(argv=None):
     """Run the full speedtest.net test"""
 
     global DEBUG
     shutdown_event = threading.Event()
 
-    args = parse_args()
+    args = parse_args(argv)
 
     print(args)
 
@@ -1969,7 +1982,8 @@ def shell():
         printer(results.json())
 
     if args.share and not machine_format:
-        dp.close()
+        if dp is not None:
+            dp.close()
 
         printer('Share results: %s' % results.share())
         image = "%s"  % results.share()
@@ -1979,9 +1993,9 @@ class PopupWindow(xbmcgui.WindowDialog):
     def __init__(self, image):
         self.addControl(xbmcgui.ControlImage(340 , 210 , 600 , 270 ,image))
 
-def main():
+def main(argv=None):
     try:
-        image = shell()
+        image = shell(argv)
 
         window = PopupWindow(image)
         window.show()
@@ -1998,16 +2012,31 @@ def main():
             raise SystemExit('ERROR: %s' % e)
 
 
-if __name__ == '__main__':
+def run(argv=None):
+    """The add-on's entry point: run the test inside the caller's interpreter.
+
+    default.py calls this from its speedtest route instead of RunScript on
+    this file's path, which Kodi logs as "Script invoked without an addon".
+    The progress dialog lives exactly as long as the run, and every failure
+    ends here, so the caller always gets control back to end its directory.
+    Returns True when the test ran to the end.
+    """
+    global dp
+    dp = xbmcgui.DialogProgress()
+    dp.create('Speedtest by Ookla', 'INITIALIZING...')
     try:
-        main()
+        main([] if argv is None else argv)
+        return True
+    except (Exception, SystemExit):
+        printer('Speedtest failed: %s' % get_exception(), error=True)
+        return False
     finally:
-        # Release the module-level progress dialog before the interpreter is
-        # torn down, so Kodi's invoker has no DialogProgress left to report.
         try:
             dp.close()
         except Exception:
             pass
-        del dp
+        dp = None
 
 
+if __name__ == '__main__':
+    run(sys.argv[1:])

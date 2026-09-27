@@ -940,7 +940,16 @@ def CreateDir(
         # DefaultVideo.png - the reel-to-reel movie camera that has been showing
         # in place of the add-on's own icon on every menu since the py3 port.
         liz.setArt({"icon": iconImage, "poster": icon})
-    liz.setInfo(type="Video", infoLabels={"Title": name, "Plot": description})
+    # The InfoTagVideo setters where Kodi has them (20 and later): Kodi 22 logs
+    # "Setting most video properties through ListItem.setInfo() is deprecated"
+    # once per row otherwise (office Fire TV, 2026-09-26). Still a video item
+    # either way, which is what the art fallback above assumes.
+    if hasattr(liz, "getVideoInfoTag"):
+        tag = liz.getVideoInfoTag()
+        tag.setTitle(name)
+        tag.setPlot(description)
+    else:
+        liz.setInfo(type="Video", infoLabels={"Title": name, "Plot": description})
     liz.setProperty("Fanart_Image", fanart)
     ok = xbmcplugin.addDirectoryItem(
         handle=int(sys.argv[1]), url=u, listitem=liz, isFolder=isFolder
@@ -1170,9 +1179,13 @@ elif action == "backup_restore":
             break
 
 elif action == "speedtest":
-    xbmc.executebuiltin(
-        'Runscript("special://home/addons/%s/resources/lib/modules/speedtest.py")' % AddonID
-    )
+    # In-process, not RunScript on the module's path: Kodi logs a script run by
+    # path as "Script invoked without an addon". run() owns its progress dialog
+    # and download threads for the length of the test and returns on every
+    # outcome, so the endOfDirectory below always runs.
+    from resources.lib.modules import speedtest
+
+    speedtest.run()
 
 elif action == "authorize":
     # Also reachable as a plugin action (the Settings button uses RunScript -> the

@@ -316,8 +316,8 @@ def test_nearest_healthy_server_wins_when_the_nearest_is_down(st, monkeypatch):
 
 def test_xml_list_is_the_fallback_when_json_api_refuses(st, monkeypatch):
     """A 403 from the JSON API (what a browser User-Agent gets) falls back to
-    the legacy XML list, parsed by the minidom path the module has always used
-    (it nulls ET at import; the ElementTree branch is dead code)."""
+    the legacy XML list, parsed by ElementTree (minidom only when ElementTree
+    cannot be imported, see the parser-parity tests below)."""
     s = _speedtest(st, monkeypatch, _json_then_xml(json_code=403))
     s.get_servers()
     assert any("/api/js/servers" in u for u in s.fetched)
@@ -344,3 +344,154 @@ def test_candidates_are_logged_for_kodi_log(st, monkeypatch, capsys):
     line = [ln for ln in out.splitlines() if ln.startswith("Speedtest servers from")]
     assert len(line) == 1
     assert "72355 Fidium (Roseville, CA) 14 km" in line[0]
+
+
+# --------------------------------------------------------------------------- #
+# ElementTree is the parser again; minidom is the ImportError fallback only
+# --------------------------------------------------------------------------- #
+# Captured 2026-09-26 from this Mac with the module's own User-Agent shape
+# ("Mozilla/5.0 (Darwin; U; 64bit; en-us) Python/3.14.0 (KHTML, like Gecko)
+# speedtest-cli/2.0.0"): speedtest-config.php (HTTP 200, 7055 bytes) and
+# speedtest-servers-static.php?threads=4 (HTTP 200, 2461 bytes, 10 servers).
+# No credentials are involved; the client ip attribute was replaced with the
+# documentation address 203.0.113.7 because this repository is public.
+DATA = Path(__file__).resolve().parent / "data"
+CONFIG_XML = (DATA / "speedtest-config.xml").read_bytes()
+SERVERS_XML = (DATA / "speedtest-servers-static.xml").read_bytes()
+
+
+def test_elementtree_is_live_and_minidom_is_only_the_import_fallback(st):
+    assert st.ET is not None, "ElementTree must be the parser on Python 3.14"
+    assert st.DOM is None, "minidom is imported only when ElementTree is not"
+    source = MODULE_PATH.read_text(encoding="utf-8")
+    assert source.count("ET = None") == 1, "ET may be nulled only on ImportError"
+
+
+def _config_via(mod, monkeypatch, use_minidom):
+    if use_minidom:
+        from xml.dom import minidom
+
+        monkeypatch.setattr(mod, "ET", None)
+        monkeypatch.setattr(mod, "DOM", minidom)
+    monkeypatch.setattr(mod, "build_opener", lambda *a, **k: object())
+    monkeypatch.setattr(
+        mod,
+        "catch_request",
+        lambda request, opener=None: (_FakeResponse(CONFIG_XML), False),
+    )
+    s = mod.Speedtest()
+    return s.config, s.lat_lon
+
+
+def _servers_via(mod, monkeypatch, use_minidom):
+    if use_minidom:
+        from xml.dom import minidom
+
+        monkeypatch.setattr(mod, "ET", None)
+        monkeypatch.setattr(mod, "DOM", minidom)
+
+    def responder(url):
+        if "/api/js/servers" in url:
+            raise _FakeHTTPError("HTTP 403")
+        return _FakeResponse(SERVERS_XML)
+
+    s = _speedtest(mod, monkeypatch, responder)
+    s.get_servers()
+    return s.servers
+
+
+def test_config_parser_agrees_on_elementtree_and_minidom(monkeypatch):
+    et = _config_via(_load_module(monkeypatch), monkeypatch, use_minidom=False)
+    dom = _config_via(_load_module(monkeypatch), monkeypatch, use_minidom=True)
+    assert et == dom
+    config, lat_lon = et
+    assert config["client"]["ip"] == "203.0.113.7"
+    assert config["client"]["isp"] == "AT&T Internet"
+    assert config["threads"] == {"upload": 2, "download": 8}
+    assert lat_lon == (32.9567, -97.336)
+    assert 683 in config["ignore_servers"]
+
+
+def test_server_list_parser_agrees_on_elementtree_and_minidom(monkeypatch):
+    et = _servers_via(_load_module(monkeypatch), monkeypatch, use_minidom=False)
+    dom = _servers_via(_load_module(monkeypatch), monkeypatch, use_minidom=True)
+    assert et == dom
+    ids = sorted(int(x["id"]) for v in et.values() for x in v)
+    assert len(ids) == 10
+    assert 60813 in ids and 12009 in ids
+
+
+def test_a_malformed_config_is_a_config_error_not_a_crash(st, monkeypatch):
+    monkeypatch.setattr(st, "build_opener", lambda *a, **k: object())
+    monkeypatch.setattr(
+        st,
+        "catch_request",
+        lambda request, opener=None: (_FakeResponse(b"<settings><client"), False),
+    )
+    with pytest.raises(st.ConfigRetrievalError):
+        st.Speedtest()
+
+
+# --------------------------------------------------------------------------- #
+# run(): the in-process entry point default.py calls
+# --------------------------------------------------------------------------- #
+PLUGIN_ARGV = ["plugin://script.ezmaintenanceplusplus/", "7", "?action=speedtest"]
+
+
+def _recording_dialog(mod, monkeypatch):
+    log = []
+
+    class DialogProgress:
+        def create(self, *a, **k):
+            log.append("create")
+
+        def update(self, *a, **k):
+            return None
+
+        def close(self):
+            log.append("close")
+
+    monkeypatch.setattr(mod.xbmcgui, "DialogProgress", DialogProgress)
+    return log
+
+
+def test_importing_the_module_opens_no_dialog(st):
+    assert st.dp is None
+
+
+def test_run_owns_its_dialog_and_ignores_the_plugin_argv(st, monkeypatch):
+    log = _recording_dialog(st, monkeypatch)
+    monkeypatch.setattr(sys, "argv", PLUGIN_ARGV)
+    seen = []
+    monkeypatch.setattr(st, "main", lambda argv=None: seen.append(argv))
+    assert st.run() is True
+    assert seen == [[]], "run must hand main an explicit, empty argv"
+    assert log == ["create", "close"]
+    assert st.dp is None, "the dialog must not outlive the run"
+
+
+def test_run_returns_on_failure_with_the_dialog_closed(st, monkeypatch):
+    log = _recording_dialog(st, monkeypatch)
+
+    def boom(argv=None):
+        raise SystemExit("ERROR: Cannot retrieve speedtest configuration")
+
+    monkeypatch.setattr(st, "main", boom)
+    real_err = sys.stderr
+    sys.stderr = io.StringIO()
+    try:
+        assert st.run() is False
+    finally:
+        sys.stderr = real_err
+    assert log == ["create", "close"]
+    assert st.dp is None
+
+
+def test_the_real_parser_accepts_an_empty_argv_under_a_plugin_sys_argv(
+    st, monkeypatch
+):
+    """Under the plugin invoker sys.argv is the plugin URL, handle and query;
+    parse_args() with no argv would exit(2) on them."""
+    monkeypatch.setattr(sys, "argv", PLUGIN_ARGV)
+    args = st.parse_args([])
+    assert args.share is True and args.download is True and args.upload is True

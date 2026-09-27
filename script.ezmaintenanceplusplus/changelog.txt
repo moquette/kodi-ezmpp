@@ -1,3 +1,12 @@
+v2026.09.27.2
+- The speed test now runs inside the add-on instead of being handed to
+  Kodi as a loose script, and Kodi's log stays clean while it runs:
+  the warning about a script with no add-on, and one warning per menu
+  row about an old way of labelling items, are both gone. The speed
+  test also reads speedtest.net's answers with Python's own XML reader
+  again. Nothing else changed: backups, restores and the custom menu
+  are untouched.
+
 v2026.09.27.1
 - The skin is now Estuary++. A box still on Estuary POV moves itself
   across the next time it starts: it installs Estuary++ from the

@@ -398,6 +398,17 @@ def dmod(monkeypatch):
     b2f.unicode = str
     _submodule("backtothefuture", b2f)
 
+    # The REAL addon_id module, loaded from its file: default.py imports it, and
+    # without it registered here this file only passed when another test module
+    # happened to import it first (run alone, 72 of its tests errored).
+    aid_spec = importlib.util.spec_from_file_location(
+        "resources.lib.modules.addon_id",
+        ADDON_ROOT / "resources" / "lib" / "modules" / "addon_id.py",
+    )
+    aid = importlib.util.module_from_spec(aid_spec)
+    aid_spec.loader.exec_module(aid)
+    _submodule("addon_id", aid)
+
     def set_nsud(module):
         """Install (or replace) the lazily imported nsud module; None removes it."""
         if module is None:
@@ -2245,3 +2256,78 @@ def test_createdir_uses_no_invalid_art_keys(dmod):
     assert not bogus, "invalid setArt keys are silently ignored by Kodi: %s" % (
         sorted(bogus),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Speedtest: in-process, never RunScript on a path
+# --------------------------------------------------------------------------- #
+def test_speedtest_runs_in_process_and_ends_the_directory(dmod, monkeypatch):
+    """The Speedtest row imports the module and calls its entry point.
+
+    RunScript on the module's special:// path made Kodi log "Script invoked
+    without an addon" (office Fire TV, 2026-09-26). The route must call
+    speedtest.run() in this interpreter, must not hand Kodi any RunScript, and
+    must still reach endOfDirectory afterwards so no empty listing is left."""
+    events = []
+    speedtest = types.ModuleType("resources.lib.modules.speedtest")
+    speedtest.run = lambda *a, **k: events.append(("run", a, k)) or True
+    monkeypatch.setitem(sys.modules, "resources.lib.modules.speedtest", speedtest)
+    monkeypatch.setattr(
+        sys.modules["resources.lib.modules"], "speedtest", speedtest, raising=False
+    )
+    monkeypatch.setattr(
+        dmod.xbmcplugin,
+        "endOfDirectory",
+        lambda *a, **k: events.append(("end", a, k)),
+    )
+    dmod.xbmc._executed.clear()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["plugin://script.ezmaintenanceplusplus/", "7", "?action=speedtest"],
+    )
+    name = "ezm_speedtest_route_uut"
+    monkeypatch.delitem(sys.modules, name, raising=False)
+    spec = importlib.util.spec_from_file_location(name, DEFAULT_PY)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+
+    assert [e[0] for e in events] == ["run", "end"], events
+    assert events[1][1] == (7,), "endOfDirectory must get the plugin's own handle"
+    assert not [
+        b for b in dmod.xbmc._executed if "runscript" in b.lower()
+    ], dmod.xbmc._executed
+    source = DEFAULT_PY.read_text(encoding="utf-8")
+    assert "speedtest.py" not in source, "a path-based launch came back"
+
+
+def test_createdir_uses_the_infotag_setters_not_the_deprecated_setinfo(dmod):
+    """Kodi 22 logs a deprecation warning for every row set through
+    ListItem.setInfo(); a ListItem that has getVideoInfoTag must get the
+    title and plot through the tag instead."""
+    import sys as _sys
+
+    seen = {"setInfo": 0, "title": None, "plot": None}
+    real = _sys.modules["xbmcgui"].ListItem
+
+    class _Tag:
+        def setTitle(self, v):
+            seen["title"] = v
+
+        def setPlot(self, v):
+            seen["plot"] = v
+
+    class _Modern(real):
+        def getVideoInfoTag(self):
+            return _Tag()
+
+        def setInfo(self, *a, **k):
+            seen["setInfo"] += 1
+
+    _sys.modules["xbmcgui"].ListItem = _Modern
+    try:
+        dmod.mod.CreateDir("Speedtest", "ur", "speedtest", "I.png", "F.jpg", "desc")
+    finally:
+        _sys.modules["xbmcgui"].ListItem = real
+    assert seen == {"setInfo": 0, "title": "Speedtest", "plot": "desc"}

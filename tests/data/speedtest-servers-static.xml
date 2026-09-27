@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+<servers><server url="http://orem-speedtest.utopiafiber.com:8080/speedtest/upload.php" lat="40.2969" lon="-111.6939" name="Orem, UT" country="United States" cc="US" sponsor="UTOPIA Fiber" id="60813"  host="orem-speedtest.utopiafiber.com:8080" />
+<server url="http://speedtest.firstdigital.com:8080/speedtest/upload.php" lat="40.7500" lon="-111.8833" name="Salt Lake City, UT" country="United States" cc="US" sponsor="FirstDigital Telecom" id="12009"  host="speedtest.firstdigital.com:8080" />
+<server url="http://speedtest.xmission.com:8080/speedtest/upload.php" lat="40.7500" lon="-111.8833" name="Salt Lake City, UT" country="United States" cc="US" sponsor="XMission" id="12652"  host="speedtest.xmission.com:8080" />
+<server url="http://speedtest.polonet.io:8080/speedtest/upload.php" lat="40.7500" lon="-111.8833" name="Salt Lake City, UT" country="United States" cc="US" sponsor="PoloNetwork Ltd" id="60540"  host="speedtest.polonet.io:8080" />
+<server url="http://speedtest.wickedfastinternet.com:8080/speedtest/upload.php" lat="40.6461" lon="-111.4980" name="Park City, UT" country="United States" cc="US" sponsor="Wicked Fast Internet" id="22212"  host="speedtest.wickedfastinternet.com:8080" />
+<server url="http://myspeed.allwest.com:8080/speedtest/upload.php" lat="40.6430" lon="-111.2807" name="Kamas, UT" country="United States" cc="US" sponsor="All West Communications" id="15985"  host="myspeed.allwest.com:8080" />
+<server url="http://speedtest.as53654.net:8080/speedtest/upload.php" lat="41.0602" lon="-111.9711" name="Layton, UT" country="United States" cc="US" sponsor="TJF HOLDINGS" id="74980"  host="speedtest.as53654.net:8080" />
+<server url="http://westhaven-speedtest.utopiafiber.com:8080/speedtest/upload.php" lat="41.2030" lon="-112.0511" name="West Haven, UT" country="United States" cc="US" sponsor="UTOPIA Fiber" id="61466"  host="westhaven-speedtest.utopiafiber.com:8080" />
+<server url="http://ogd1-speedtest.webnx.com:8080/speedtest/upload.php" lat="41.2278" lon="-111.9611" name="Ogden, UT" country="United States" cc="US" sponsor="WebNX Inc." id="46758"  host="ogd1-speedtest.webnx.com:8080" />
+<server url="http://brighamcity-speedtest.utopiafiber.com:8080/speedtest/upload.php" lat="41.5102" lon="-112.0155" name="Brigham City, UT" country="United States" cc="US" sponsor="UTOPIA Fiber" id="61467"  host="brighamcity-speedtest.utopiafiber.com:8080" />
+</servers>
+</settings>

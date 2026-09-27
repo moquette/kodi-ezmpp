@@ -814,7 +814,8 @@ def test_setting_exists_default_on_with_its_strings():
 
 def test_news_and_changelog_carry_the_release():
     addon = (ADDON_ROOT / "addon.xml").read_text(encoding="utf-8")
-    assert 'version="2026.09.27.1"' in addon
+    # The release that shipped the migration stays in the history; it is not
+    # pinned as the CURRENT version, which later releases move on.
     assert "v2026.09.27.1: The skin is now Estuary++." in addon
     changelog = (ADDON_ROOT / "changelog.txt").read_text(encoding="utf-8")
-    assert changelog.startswith("v2026.09.27.1\n- The skin is now Estuary++.")
+    assert "\nv2026.09.27.1\n- The skin is now Estuary++." in "\n" + changelog

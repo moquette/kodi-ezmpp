@@ -58,6 +58,14 @@ defects are FIXED IN CODE; what survives them is summarized below.
 
 **For anything Apple TV, read `~/Code/kodi/.claude/skills/apple-tv/SKILL.md`.**
 
+The kodi.log error "Control 55 in window 10001 has been asked to focus, but it
+can't" comes only from opening this add-on headlessly with JSON-RPC
+`Addons.ExecuteAddon`, which initialises Programs on an empty listing; the
+normal remote path (Home, Add-ons, Program add-ons, EZ Maintenance++, then
+Speedtest and back out) never logs it, so it is not a skin defect (MEASURED
+on office 2026-09-26: zero lines over 281 log lines for the remote path, one
+line at 20:29:48 within a second of `ExecuteAddon`).
+
 ### The two restore defects - both FIXED, one residue OPEN BY DESIGN
 
 **`docs/restore-defects-2026-07-18.md` is the diagnosis record. It was written
