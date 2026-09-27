@@ -9,7 +9,7 @@ NSUserDefaults, where a key SHADOWS the disk file and the two layers can disagre
 the shape a plain-dict fake cannot express: "key exists, disk file gone" and "stale key
 wins over newer disk content" are both first-class states here.
 
-THE MODEL (ground truth: kodi-storage-map SKILL.md, verified against xbmc branch Omega)
+THE MODEL (ground truth: apple-tv SKILL.md section 8, verified against xbmc branch Omega)
 ---------------------------------------------------------------------------------------
 tvOS (`platform="tvos"`):
   - ELIGIBILITY (CTVOSFile::WantsFile, TVOSFile.cpp:39-45): a path is vectored iff it is

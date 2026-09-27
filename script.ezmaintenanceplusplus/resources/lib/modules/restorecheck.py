@@ -25,7 +25,7 @@ Triage classes for a wipe leftover, in order of decreasing comfort:
                 never alarmed (owner spec). A wipe that leaves real residue is
                 worth watching, hence the count in the log.
   shadow      - a tvOS NSUserDefaults key the archive does not carry. A key
-                SHADOWS its disk twin (kodi-storage-map), so a surviving stale
+                SHADOWS its disk twin (apple-tv SKILL.md section 8), so a surviving stale
                 key is the ONLY leftover class that can override restored
                 state. These are the auto-fix targets; any that survive the
                 fix are what "needs attention" means.

@@ -4,7 +4,7 @@ Every value the Apply Settings Profile flow applies lives HERE, as data. The
 code in `resources/lib/modules/profile.py` carries no payload literal.
 
 Layout and rules (the loader enforces all of them; see
-`docs/settings-profile-plan.md` section 7.1 and `tests/test_settings_profile.py`):
+`docs/settings-profile-plan.md` §7.1 and `tests/test_settings_profile.py`):
 
 - `settings.d/*.xml`: class A fragments, standalone `<settings version="2">`
   documents merged in glob order. Value from the LAST occurrence of an id,

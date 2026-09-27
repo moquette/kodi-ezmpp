@@ -118,7 +118,7 @@ def _wipe(home, excludes, keep_files=None, progress=None):
     tvOS (and ONLY tvOS - hard-gated by _is_tvos) also drops the NSUserDefaults key of
     every non-excluded userdata path. On Apple TV Kodi vectors userdata *.xml into
     NSUserDefaults and reads the KEY FIRST - a key SHADOWS the disk file and Kodi never
-    copies a key back to disk (kodi-storage-map SKILL, TVOSFile.cpp:113-122) - so a
+    copies a key back to disk (apple-tv SKILL.md section 8, TVOSFile.cpp:113-122) - so a
     POSIX-only wipe leaves every key alive to shadow whatever the subsequent restore
     writes. On Fire TV / Android / desktop the key pass is a strict no-op.
 

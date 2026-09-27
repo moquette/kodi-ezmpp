@@ -13,7 +13,7 @@ The harness models both layers for real, like tests/fake_kodi_sandbox_io.py does
   * the key layer is a REAL binary plist at <sandbox>/Library/Preferences/, the exact
     store nsub._find_nsud_plist enumerates, so the wipe's key enumeration and its
     re-read verification run through the shipped nsub code path.
-The fake xbmcvfs.delete models tvOS CTVOSFile::Delete exactly (kodi-storage-map bug 4):
+The fake xbmcvfs.delete models tvOS CTVOSFile::Delete exactly (apple-tv SKILL.md section 11, bug 4):
 it drops ONLY the plist key, NEVER touches the POSIX file, and returns True whether or
 not a key existed - so a test passes only if the code never trusts that boolean.
 """

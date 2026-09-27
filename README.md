@@ -162,8 +162,9 @@ where a settings-durability rewrite needed a backup that reads both storage laye
 a 2026-07-14 incident where an overly broad vectoring rule deleted the POSIX copy of a
 skin's customized main-menu data, which the skin then couldn't read back (fixed in
 `nsud.py`'s `_should_vector`, scoped to exactly what Kodi's VFS actually reads). The full
-storage model (with exact Kodi source citations) lives in the sibling proxy repo's
-`~/Code/moquette/kodi/.claude/skills/kodi-storage-map/SKILL.md` - read it before touching `nsud.py`,
+storage model (with exact Kodi source citations) lives in the fleet meta repo's
+`~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md` (§8, the storage model; the
+old `kodi-storage-map` skill was merged into it 2026-07-21) - read it before touching `nsud.py`,
 `nsub.py`, or `wiz.py`.
 
 Three things in this repo exist specifically to keep that class of bug from shipping
@@ -225,25 +226,34 @@ actually means something.
 
 ## Release
 
+**A release is a version bump pushed to `main`; nothing else is run by hand.**
+CI (`.github/workflows/ci.yml`, `publish` job) publishes `v<version>` on the
+first push to `main` that carries a new `addon.xml` version, verifies the asset
+is anonymously downloadable and its sha256 matches the CI build, and dispatches
+the Tony.7.Bones repo (`repository_dispatch`, type `ezmpp-release`), whose Pages
+build resolves the latest release and serves it under `/static/` (since
+2026-09-26; there is no hosted metadata to bump there any more). A box picks
+it up on its next repository check (hourly, see the scheduled check above).
+Confirm a release went live with
+`~/Code/moquette/kodi/.claude/skills/update/SKILL.md` §1.
+
+`tools/release.sh` is the OFFLINE RE-CUT ONLY, for the case where CI could not
+publish. It is not the normal path.
+
 ```sh
-tools/release.sh              # build, tag v<version>, publish the GitHub Release asset, verify
+tools/release.sh              # re-cut by hand: CI gate, tag v<version>, publish the asset, verify
 tools/release.sh --dry-run    # show the plan, tag/release nothing
 ```
 
-`tools/release.sh` builds the deterministic zip, tags it `v<version>` (anchored to
-`origin/main`, never local/unpushed work), publishes the zip as a GitHub Release asset
-on this repo via `gh release create`, then **verifies the asset is anonymously
-downloadable and its sha256 matches the local build** - a release that fails
-verification is treated as a release that would ship broken bytes to a live box, so it
-is a hard failure, not a warning.
-
-`tools/release.sh` is the manual re-cut. The normal path needs no human on the
-release step: CI (`.github/workflows/ci.yml`) publishes `v<version>` on the first
-push to `main` that carries a new version, verifies the asset, and dispatches the
-Tony.7.Bones repo, whose Pages build resolves the latest release and serves it
-under `/static/` (since 2026-09-26; there is no hosted metadata to bump there
-any more). A box picks it up on its next Check for updates. Confirm a release
-went live with `~/Code/moquette/kodi/.claude/skills/update/SKILL.md` section 1.
+It builds the deterministic zip, refuses unless the `test` job is green for
+the exact commit and HEAD equals `origin/main`, refuses when the tag already
+exists, tags `v<version>` (anchored to `origin/main`, never local/unpushed
+work), publishes the zip as a GitHub Release asset via `gh release create`,
+then **verifies the asset is anonymously downloadable and its sha256 matches
+the local build** - a release that fails verification would ship broken bytes
+to a live box, so it is a hard failure, not a warning. A release created by
+hand this way DOES emit the `release: published` event, so
+`.github/workflows/notify-hub.yml` dispatches the hub for it.
 
 ## Install / use it with a network share
 

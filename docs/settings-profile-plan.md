@@ -1,9 +1,18 @@
 # Plan - Settings Profile: one command that customizes a fresh Kodi install
 
-Status: PLANNED and SIGNED OFF, not started. No code exists yet.
+Status: history as of 2026-09-26. Phases 0 to 3 shipped: the Phase 0 results
+are `settings-profile-experiments-2026-08-30.md`; the engine
+(`resources/lib/modules/profile.py`), the bundle (`resources/profiles/house/`),
+the menu row and the boot check landed 2026-08-30 (`d02da58`) and have shipped
+since v2026.08.31.3, with the share-host and PVR share steps added 2026-09-26
+(`../CLAUDE.md`, which is the living contract). Never written: `tools/resolve_profile.py`,
+the `bootstrapper` adapter and its byte-for-byte gate (`bootstrapper` was
+deleted 2026-08-31, superseded by `bootstrap-light/`), and Phase 4 ("Save this
+box as a profile"; no such row exists in `default.py`). The §12 checklist is
+left as it was written and is not a status.
 Written: 2026-08-04. Revision 3, after two rounds of QA and architecture review.
-Owner decisions in section 1 are settled; do not re-litigate them.
-Start at section 12, the checklist. Phase 0 gates everything else.
+Owner decisions in §1 are settled; do not re-litigate them.
+Start at §12, the checklist. Phase 0 gates everything else.
 
 ## 0. The ask, in one line
 
@@ -196,7 +205,7 @@ live path would be cheap to use if it exists, but the plan does not depend on it
 **The bundle carries source ENTRIES, never a document.** `bootstrapper`'s
 `settings/sources.xml` is a complete `<sources>` document with stubs for every
 media section; copying it onto a configured box DELETES every source that box
-already had, which contradicts the additive guarantee in section 2 outright. The
+already had, which contradicts the additive guarantee in §2 outright. The
 launcher may write it whole because it runs against an empty profile. The add-on
 may not.
 
@@ -219,7 +228,7 @@ version loses:
 5. Gates BOTH the write and the vector behind `if added or renamed:`. Without
    that guard a second run rewrites `sources.xml` and re-vectors it, which on
    tvOS is a key rewrite plus a POSIX drop: a real mutation on a run that changed
-   nothing, and the section 2 idempotency claim would be false at the storage
+   nothing, and the §2 idempotency claim would be false at the storage
    layer even though the file content is identical.
 
 Two smaller details to carry across with it: the `<default>` element insert when
@@ -264,7 +273,7 @@ this tree already makes:
    silently writing anyway is not one of them:
    - a bounded disable, settle, write, re-enable in a `finally`, which is
      Mechanism B from the playbook and is what the restore path already does for
-     pvr.iptvsimple. This makes it a second sanctioned add-on toggle, so section 9
+     pvr.iptvsimple. This makes it a second sanctioned add-on toggle, so §9
      must cover it.
    - or detect already-enabled and report that leaf as NOT applied with the
      reason, which keeps the reporting contract honest at the cost of the feature
@@ -451,7 +460,7 @@ resources/profiles/house/
   settings.d/30-addons.xml
   settings.d/40-media.xml
   settings.d/50-language.xml
-  sources.xml                        # class C ENTRIES only (see below)
+  sources.xml                        # class C ENTRIES only (§4.3)
   addons.list                        # class D: id plus method
   addon_data/<id>/settings.xml       # class D config, device-neutral leaves only
   overlays/fireos/...                # per-class, merged last
@@ -652,7 +661,7 @@ step silently half-applied; it is recorded and surfaces in the result.
 
 ### 7.5 The result record
 
-`_kodisettings.apply_guisettings` cannot produce what section 6.2 promises. It
+`_kodisettings.apply_guisettings` cannot produce what §6.2 promises. It
 silently skips ids Kodi does not know (`_kodisettings.py:107`), silently skips
 values already equal (`:115`), and returns a bare count (`:123`). Under the
 reporting contract a count is not a result, and an idempotent re-run legitimately
@@ -662,7 +671,7 @@ rename, and it returns per-id outcomes:
 `applied` / `already-correct` / `refused` / `unknown-id` / `timeout` / `error`
 
 `already-correct` being distinct from `applied` is what makes the idempotency
-claim in section 2 testable at all. `unknown-id` is reachable at runtime by
+claim in §2 testable at all. `unknown-id` is reachable at runtime by
 design (7.1): the authoring gate catches it in CI, and a live catalog that has
 moved under a validated bundle reports per-item rather than aborting the apply.
 
@@ -873,7 +882,7 @@ tree, so reproducing that tree is the definition of a correct adapter.
 5. The exact confirm and result wording, which is owner-gated vocabulary.
 6. For an already-enabled third-party add-on, whether `addon_data` is written
    behind a bounded disable/re-enable (which needs a third contract amendment in
-   section 9) or reported as not applied (4.4). No payload depends on this today.
+   §9) or reported as not applied (4.4). No payload depends on this today.
 7. Whether `general.addonupdates` belongs in the bundle (4.4).
 
 ## 12. The checklist
@@ -937,7 +946,7 @@ one gates the next. Owner decisions are marked; everything else is work.
 - [ ] The positive test: `apply()` against `fake_kodi_storage.py` at
       `platform="tvos"`, all class A ids present, exactly one vector taken.
 - [ ] One menu row in `default.py`, one confirm, one restart.
-- [ ] Amend both contract lines in `CLAUDE.md` (section 9).
+- [ ] Amend both contract lines in `CLAUDE.md` (§9).
 - [ ] GATE: projection differential clean on the bench.
 
 ### Phase 3: the boot check

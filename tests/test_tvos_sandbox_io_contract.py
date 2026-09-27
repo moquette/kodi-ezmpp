@@ -10,7 +10,7 @@ storage fake deliberately does not:
 
 Each has a matching "reverted" test proving the fix is what makes it pass: swap the fix
 back to the naive form and the tvOS read goes empty, exactly as it did on the box. That is
-the ezm-backup-doctor standard - a test that does not fail on the pre-fix code proves
+the house standard - a test that does not fail on the pre-fix code proves
 nothing.
 """
 

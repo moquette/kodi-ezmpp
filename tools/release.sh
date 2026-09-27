@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Release EZ Maintenance++: build the deterministic zip, tag it, and publish
-# the zip as a GitHub Release asset on THIS repo (moquette/kodi-ezmpp).
+# OFFLINE RE-CUT ONLY. The normal release path is CI: the `publish` job in
+# .github/workflows/ci.yml cuts the GitHub Release on the first push to main
+# that carries a new addon.xml version, verifies the asset and dispatches the
+# hub. Run this script only when CI could not publish. It does the same by
+# hand: build the deterministic zip, tag it, and publish the zip as a GitHub
+# Release asset on THIS repo (moquette/kodi-ezmpp).
 #
 # Release discipline:
 # build -> CI GATE -> sha256 -> tag -> gh release create -> verify the asset is
@@ -63,7 +67,7 @@ fi
 # both released by this script from commits whose `test` job was RED on
 # tests/test_storage_change_requires_device_verification.py, and both reached
 # the live hub catalog within a minute. CI's own publish job CANNOT do this -
-# .github/workflows/ci.yml:87 declares `needs: test`, and the publish job was
+# .github/workflows/ci.yml:128 declares `needs: test`, and the publish job was
 # `skipped` in both runs (29853877919, 29856967414). This script did it,
 # because it went straight from build.sh to `gh release create` and never asked
 # anything about the commit it was tagging. CLAUDE.md:111 already said "Tests
@@ -146,7 +150,7 @@ echo "CI gate: ${SHA} is completed/success on job 'test' - clear to release."
 # and the sha256 check below cannot see it (it compares the upload to the
 # local build, never to the tagged source). $SHA is origin/main as read by
 # the gate, so it is still by definition pushed and reviewable; it just
-# cannot drift. This matches what CI does: .github/workflows/ci.yml:126 uses
+# cannot drift. This matches what CI does: .github/workflows/ci.yml:172 uses
 # --target "${GITHUB_SHA}".
 gh release create "$TAG" "$ZIP" \
   --repo "$REPO" \
@@ -163,8 +167,9 @@ rm -f "$TMP"
 
 if [ "$DOWNLOADED_SHA" != "$SHA256" ]; then
   echo "FATAL: downloaded asset sha256 mismatch (expected ${SHA256}, got ${DOWNLOADED_SHA})" >&2
-  echo "  The release exists but does NOT match the build - do not point the" >&2
-  echo "  proxy's repository.json at this tag until this is resolved." >&2
+  echo "  The release exists but does NOT match the build - the hub resolves" >&2
+  echo "  releases/latest on its next Pages build, so delete or fix this" >&2
+  echo "  release before it is picked up." >&2
   exit 1
 fi
 

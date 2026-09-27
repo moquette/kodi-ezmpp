@@ -1,5 +1,10 @@
 # Master Plan: one universal UI/feedback library (`ui.py`)
 
+Status: history as of 2026-09-26. Stages A, B and C are on `main` since 2026-07-01 (the
+branch `ui-consistency-stage-a` no longer exists) and Stage D shipped 2026-07-13 in
+`aef9bea`: `buildInstaller`, `BUILDS` and `install_build` are gone from the source (grep
+finds none). Nothing below is open. The original status line follows as written.
+
 Status: **BUILT. Stages A, B, and C are implemented on branch `ui-consistency-stage-a`
 (135 tests green). Stage D (buildInstaller/BUILDS removal) is deferred to a separate PR as
 planned. The "v2" section below is the binding spec that was followed.**

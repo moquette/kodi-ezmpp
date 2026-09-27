@@ -9,8 +9,9 @@ Every item below states what was PROVEN, what was INFERRED, and what the
 recommendation actually is. Several investigations concluded "change nothing" -
 those are recorded deliberately so the question is not re-opened from scratch.
 
-Nothing here is approved. The owner requires independent QA agent and
-architecture agent review before any phase is declared done.
+Nothing here is approved. (The two-agent QA plus architecture review this
+paragraph used to require was deleted with the rest of the fleet process on
+2026-07-21 and must not be reinstated.)
 
 ---
 
@@ -205,12 +206,12 @@ the task breakdown.
 
 ---
 
-## 5. Deferred from an earlier plan
+## 5. CLOSED 2026-09-26: shipped 2026-07-13 in `aef9bea` - `buildInstaller`, `BUILDS` and `install_build` are gone from the source (grep finds none). (Originally: Deferred from an earlier plan)
 
 `ui-consistency-plan.md` Stage D - removal of `buildInstaller` / `BUILDS` /
 `install_build` - was explicitly deferred to a separate PR (that document, lines
-4-5, 18, 242). Stages A, B and C are built. This is the only pre-existing
-deferred EZM++ item found in the tree.
+4-5, 18, 242). Stages A, B and C are built. This was the only pre-existing
+deferred EZM++ item found in the tree when this queue opened.
 
 ---
 
@@ -229,11 +230,10 @@ deferred EZM++ item found in the tree.
 | `repo/docs/plans/atv-every-boot-settings-reassert.md` | REJECTED every-boot re-assert design (do not re-propose) plus the corrected fix that became `nsud.rewrite_userdata_xml`, with its open caveats. |
 | `repo/docs/playbooks/ezm-restore-hardening.md` | The 2026.07.07.x restore hardening and the Fire OS 8 progress-text SIGSEGV lesson. |
 | `repo/docs/playbooks/kodi-vfs-cannot-read-foreign-local-files.md` | Why stash/marker I/O uses plain Python, not `xbmcvfs`. |
-| `~/Code/moquette/kodi/.claude/skills/kodi-storage-map/SKILL.md` | Exhaustive per-OS file map. |
-| `~/Code/moquette/kodi/.claude/skills/ezm-backup-doctor/SKILL.md` | Backup/restore triage guide. |
+| `~/Code/moquette/kodi/.claude/skills/apple-tv/SKILL.md` | The tvOS playbook: storage model (§8), the Caches purge (§9), the four I/O bugs (§11). Absorbed the `kodi-storage-map` and `ezm-backup-doctor` skills, both deleted 2026-07-21. |
 | `repo/docs/agent-postmortem-do-not-repeat.md` | Process failures not to repeat. |
 | `ezmpp/CLAUDE.md` | Backup/restore contract, tvOS storage rules, the three mechanical guards. |
-| `ezmpp/docs/restore-defects-2026-07-18.md` | The two open defects, root cause, fix plan, task breakdown. |
+| `ezmpp/docs/restore-defects-2026-07-18.md` | History: the two 2026-07-18 restore defects (both since fixed, §4), root cause, fix plan, task breakdown. |
 
 Relevant incident record in `repo/docs/`: `incident-2026-07-07-ezmpp-wrong-device-buffer-after-restore.md`
 (why the post-restore buffer prompt exists at all, which is the feature item 2 touches),

@@ -105,8 +105,9 @@ owner decision about credentials stored in cleartext inside the backup zips.
 ## What this repo is
 
 **EZ Maintenance++** (`script.ezmaintenanceplusplus`) is a fork of EZ Maintenance+
-(aenema, peno) for the Tony.7.Bones Kodi 21 "Omega" fleet (5 Fire TV boxes + 2 Apple
-TVs). This repo (`moquette/kodi-ezmpp`, public) is the **single source of
+(aenema, peno) for the Tony.7.Bones Kodi fleet: four Fire OS boxes and two Apple
+TVs (`../.claude/scripts/DEVICES.md`), on Kodi 22 "Piers" except atv2, which is
+still on Kodi 21.3 "Omega". This repo (`moquette/kodi-ezmpp`, public) is the **single source of
 truth**: the add-on source, its full test suite, and the build/release tooling live
 here and only here.
 
@@ -133,11 +134,11 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
 ## The build/test/release contract
 
 - **Deterministic packaging.** `tools/build.py` (wrapped by `./build.sh`) sorts zip
-  members and fixes 1980-01-01 timestamps, same discipline as the proxy repo's
+  members and fixes 1980-01-01 timestamps, same discipline as the hub's
   `generate_repo.py` and the skin repo's `build_skin.py`. `./build.sh --check` builds
   twice and byte-compares.
 - **Tests are mandatory before any release.** Run
-  `/opt/homebrew/bin/python3 -m pytest tests/ -q` (923 tests + 3 xfail, measured 2026-09-27; the
+  `/opt/homebrew/bin/python3 -m pytest tests/ -q` (928 collected: 925 pass + 3 xfail, measured 2026-09-26; the
   system `python3` on this machine is 3.9, too old for this suite), and
   `ruff check tests/ tools/` must also be clean.
 - **Tool versions are pinned in `requirements-ci.txt` and `ruff.toml`**, which CI
@@ -174,7 +175,7 @@ stale for weeks. Fix bugs and add tests **here**. For anything tvOS, read
   the hub's latest "Build & Deploy Pages" run for a `::warning::` and a `stale`
   entry; never commit a copy of `addon.xml` to the hub.
 - **This add-on's changelog is hand-written, multi-line prose** (`changelog.txt` +
-  the `<news>` block in `addon.xml`) - NOT the one-line convention the proxy repo's
+  the `<news>` block in `addon.xml`) - NOT the one-line convention the hub's
   `release.py` automation expects. Never run that automation against this add-on's
   news; it has corrupted the changelog before (~190 lines mangled in one run).
 
@@ -328,7 +329,7 @@ them without understanding why they exist:
   quirk for local and `special://temp` files, which are not under userdata. An
   earlier revision of this file credited it with the two-layer userdata model;
   that was wrong, and the plan review that caught it is recorded in
-  `docs/settings-profile-plan.md` section 8.2.
+  `settings-profile-plan §8`, item 2.
 
 Two corrected facts, now consistent everywhere in this project - do not let either
 regress:
@@ -378,7 +379,7 @@ not a spec):
   did not already have enabled, and restore never installs or stages add-ons.
   **Apply Settings Profile is the one deliberate exception to both lines**, as
   a THIRD actor: user-invoked, foreground, behind an explicit confirm, applying
-  a validated bundle only (`resources/lib/modules/profile.py`, plan section 9).
+  a validated bundle only (`resources/lib/modules/profile.py`, `settings-profile-plan §9`).
   It stages, enables and (for its three confirm-gated core settings) answers
   Kodi's own warning dialogs; its boot-side half checks and reports ONLY. Boot
   and restore stay exactly as restricted as written above - do not read this

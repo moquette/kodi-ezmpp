@@ -1,6 +1,16 @@
 # Folding EZ Maintenance++ into skin.estuary.pov
 
-Status: PROPOSAL, awaiting owner decision. Written 2026-08-28.
+Status: history as of 2026-09-26. Not accepted as written: the owner keeps
+EZ Maintenance++ a standalone add-on, built modular so the skin can consume
+pieces of it later, and this document is background for that hybrid only
+(`../../CLAUDE.md`). Since it was written: Estuary POV became Estuary++
+(`skin.estuary.plusplus`, checkout `estuary-plusplus/`, 2026-09-26; the
+`estuary-pov` paths and `skin.estuary.pov` id below are as they stood), and
+`skin.estuary7` and `skin.estuary8` were decommissioned 2026-08-31. The one piece
+of Stage 2 groundwork that shipped is the add-on id seam
+(`resources/lib/modules/addon_id.py`, 2026-09-26). Nothing else below is done;
+the EZM++ button on Home is absent from `skin.estuary.plusplus/xml/` (grep
+finds no `ezmaintenanceplusplus` there). Written 2026-08-28.
 
 ## What was asked
 
