@@ -183,8 +183,13 @@ def known(aid):
 
 
 def hub_lists(aid):
-    """True iff a repository Kodi has indexed offers `aid` (Addons.GetAddons
-    with installed=false is the JSON-RPC route to GetInstallableAddons)."""
+    """The NAME a repository Kodi has indexed offers `aid` under, or "" when
+    none does (Addons.GetAddons with installed=false is the JSON-RPC route to
+    GetInstallableAddons). The name is what Kodi's download prompt shows on
+    its middle line, and it is the half of the match that makes the watcher
+    answer only the prompt for THIS add-on: the same 24101 question is asked
+    for any add-on a skin widget references (measured on the bench 2026-09-26:
+    the POV skin's Home raised it for plugin.video.pov at first load)."""
     try:
         resp = _rpc(
             "Addons.GetAddons",
@@ -192,18 +197,18 @@ def hub_lists(aid):
                 "type": "xbmc.gui.skin",
                 "installed": False,
                 "enabled": "all",
-                "properties": ["version"],
+                "properties": ["name"],
             },
         )
     except Exception:
-        return False
+        return ""
     result = resp.get("result")
     if not isinstance(result, dict):
-        return False
+        return ""
     for addon in result.get("addons") or []:
         if isinstance(addon, dict) and addon.get("addonid") == aid:
-            return True
-    return False
+            return (addon.get("name") or "").strip() or aid
+    return ""
 
 
 def new_skin_present():
@@ -237,10 +242,11 @@ def _localized(sid):
         return ""
 
 
-def _yesno_showing(expected_text):
-    """True iff Kodi's yes/no dialog is up and its text carries `expected_text`
-    (the install prompt is three lines, the keep-skin dialog one)."""
-    if not expected_text:
+def _yesno_showing(*expected_texts):
+    """True iff Kodi's yes/no dialog is up and its text carries EVERY one of
+    `expected_texts` (the install prompt is three lines, question plus the
+    add-on's name; the keep-skin dialog is one line)."""
+    if not expected_texts or not all(expected_texts):
         return False
     try:
         if not xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
@@ -248,7 +254,7 @@ def _yesno_showing(expected_text):
         shown = (xbmc.getInfoLabel("Control.GetLabel(9)") or "").strip()
     except Exception:
         return False
-    return expected_text in shown
+    return all(t in shown for t in expected_texts)
 
 
 def _press_yes():
@@ -281,7 +287,8 @@ def install_new_skin(log=None):
                 return APPLIED, "%s was installed but disabled; enabled" % NEW_SKIN
             xbmc.sleep(_POLL_MS)
         return ERROR, "%s is installed but would not enable" % NEW_SKIN
-    if not hub_lists(NEW_SKIN):
+    name = hub_lists(NEW_SKIN)
+    if not name:
         return SKIPPED, (
             "no repository offers %s yet; nothing touched, retried next start"
             % NEW_SKIN
@@ -305,7 +312,7 @@ def install_new_skin(log=None):
     answered = False
     deadline = _now() + _INSTALL_TIMEOUT_S
     while _now() < deadline:
-        if _yesno_showing(prompt):
+        if _yesno_showing(prompt, name):
             _press_yes()
             answered = True
         else:

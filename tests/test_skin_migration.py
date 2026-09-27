@@ -61,6 +61,7 @@ class _Rig:
         self.platform = platform
         self.addons = {}  # id -> enabled
         self.hub = set()  # ids the repository index offers
+        self.hub_names = {NEW: "Estuary++"}
         self.live = STOCK
         self.playing = False
         self.dialog = None  # {"kind": "download"|"keep", "text": ...}
@@ -123,8 +124,12 @@ class _Rig:
         if m == "Addons.GetAddons":
             assert p.get("installed") is False
             assert p.get("type") == "xbmc.gui.skin"
+            assert p.get("properties") == ["name"]
             return json.dumps(
-                {"result": {"addons": [{"addonid": a, "type": "xbmc.gui.skin"} for a in sorted(self.hub)]}}
+                {"result": {"addons": [
+                    {"addonid": a, "type": "xbmc.gui.skin", "name": self.hub_names.get(a, a)}
+                    for a in sorted(self.hub)
+                ]}}
             )
         if m == "Settings.SetSettingValue":
             if p["setting"] == "lookandfeel.skin":
@@ -509,6 +514,39 @@ def test_only_kodis_own_prompt_is_answered(monkeypatch, tmp_path):
     assert res["outcome"] == rig.sm.ERROR
     assert rig.dialog == {"kind": "other", "text": "Delete all your files?"}
     assert "Action(select)" not in rig.builtins and "Action(right)" not in rig.builtins
+
+
+def test_kodis_download_prompt_for_another_addon_is_not_answered(monkeypatch, tmp_path):
+    """MEASURED on the bench 2026-09-26: the POV skin's Home raises Kodi's
+    identical 'Would you like to download this add-on?' for plugin.video.pov
+    when it is missing. Only the prompt naming the new skin is answered."""
+    rig = _rig(monkeypatch, tmp_path)
+    _pov_box(rig)
+    real = rig.builtin
+
+    def other_prompt(cmd, wait=False):
+        if cmd.startswith("InstallAddon("):
+            rig.builtins.append(cmd)
+            rig.dialog = {
+                "kind": "download",
+                "text": "To use this feature you must download an add-on:\nPOV\n" + DOWNLOAD_TEXT,
+            }
+            return
+        real(cmd, wait)
+
+    rig.sm.xbmc.executebuiltin = other_prompt
+    res = rig.sm.run()
+    assert res["outcome"] == rig.sm.ERROR and "never seen" in res["detail"]
+    assert rig.dialog is not None and "POV" in rig.dialog["text"]
+    assert "Action(select)" not in rig.builtins and "Action(right)" not in rig.builtins
+    assert NEW not in rig.addons
+
+
+def test_hub_lists_returns_the_name_kodi_shows(monkeypatch, tmp_path):
+    rig = _rig(monkeypatch, tmp_path)
+    rig.hub.add(NEW)
+    assert rig.sm.hub_lists(NEW) == "Estuary++"
+    assert rig.sm.hub_lists(OLD) == ""
 
 
 def test_old_installed_new_missing_on_stock_estuary_installs_but_does_not_switch(monkeypatch, tmp_path):
