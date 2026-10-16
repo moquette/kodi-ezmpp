@@ -848,9 +848,12 @@ def test_clear_recent_channels_uses_only_current_schema(maint, tmp_path, monkeyp
     assert _recent(dbdir / "TV46.db") == 2, "the stale schema DB must never be touched"
 
 
-def test_clear_recent_channels_pauses_the_client_around_the_write(
+def test_clear_recent_channels_never_toggles_the_pvr_client(
     maint, tmp_path, monkeypatch
 ):
+    """No PVR pause: disabling pvr.iptvsimple stops the PVR manager, which
+    aborted Kodi 22.0 RC1 in 3 of 10 toggles on the bench (2026-10-15). The
+    write runs live and the restart offer reloads the in-memory state."""
     dbdir = tmp_path / "db"
     dbdir.mkdir()
     db = dbdir / "TV48.db"
@@ -858,107 +861,29 @@ def test_clear_recent_channels_pauses_the_client_around_the_write(
     monkeypatch.setattr(maint, "databasePath", str(dbdir))
     rpc = _strict_rpc(maint, monkeypatch)
 
-    seen = {}
-    real_reset = maint._reset_recent_channels
-
-    def spy(dbs):
-        seen["enabled_during_write"] = rpc.addons["pvr.iptvsimple"]
-        seen["marker_during_write"] = maint_tools(maint).pvr_pause_pending()
-        return real_reset(dbs)
-
-    monkeypatch.setattr(maint, "_reset_recent_channels", spy)
-
     assert maint.clearRecentChannels(mode="silent") == 2
     assert _recent(db) == 0, "every recent-watch timestamp must be reset"
     con = sqlite3.connect(str(db))
     groups = [r[0] for r in con.execute("SELECT iLastWatchedGroupId FROM channels")]
     con.close()
     assert groups == [-1, 0, -1], "cleared rows take Kodi's 'no group' (-1)"
-    assert seen == {"enabled_during_write": False, "marker_during_write": True}
-    assert rpc.addon_history == [("pvr.iptvsimple", False), ("pvr.iptvsimple", True)]
+    assert rpc.addon_history == [], "the PVR client must never be toggled"
     assert rpc.addons["pvr.iptvsimple"] is True
-    assert not maint_tools(maint).pvr_pause_pending(), "marker cleared on re-enable"
+    assert not [m for m, _p in rpc.calls if m.startswith("Settings.")]
+    assert not maint_tools(maint).pvr_pause_pending()
 
 
-def test_clear_recent_channels_leaves_a_disabled_client_off(
-    maint, tmp_path, monkeypatch
-):
+def test_clear_recent_channels_logs_the_write(maint, tmp_path, monkeypatch):
     dbdir = tmp_path / "db"
     dbdir.mkdir()
     _make_pvr_db(dbdir / "TV48.db", [1700000000])
     monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    rpc = _strict_rpc(maint, monkeypatch, pvr_enabled=False)
+    _strict_rpc(maint, monkeypatch)
 
-    assert maint.clearRecentChannels(mode="silent") == 1
-    assert rpc.addon_history == [], "a client the owner switched off stays off"
-    assert rpc.addons["pvr.iptvsimple"] is False
-
-
-def test_clear_recent_channels_without_a_pvr_client(maint, tmp_path, monkeypatch):
-    dbdir = tmp_path / "db"
-    dbdir.mkdir()
-    _make_pvr_db(dbdir / "TV48.db", [1700000000])
-    monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    rpc = _strict_rpc(maint, monkeypatch, pvr_enabled=None)
-
-    assert maint.clearRecentChannels(mode="silent") == 1
-    assert rpc.addon_history == []
-
-
-def test_clear_recent_channels_skips_the_write_when_the_pause_fails(
-    maint, tmp_path, monkeypatch
-):
-    dbdir = tmp_path / "db"
-    dbdir.mkdir()
-    db = dbdir / "TV48.db"
-    _make_pvr_db(db, [1700000000])
-    monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    rpc = _strict_rpc(maint, monkeypatch)
-    rpc.fail_methods.add(("Addons.SetAddonEnabled", False))
-    notes = []
-    maint.ui.notify = lambda msg, **k: notes.append(msg)
-
-    assert maint.clearRecentChannels(mode="verbose") == 0
-    assert _recent(db) == 1, "never write under a live client"
-    assert rpc.addons["pvr.iptvsimple"] is True
-    assert notes and "nothing cleared" in notes[0]
-
-
-def test_clear_recent_channels_re_enables_when_the_write_raises(
-    maint, tmp_path, monkeypatch
-):
-    dbdir = tmp_path / "db"
-    dbdir.mkdir()
-    _make_pvr_db(dbdir / "TV48.db", [1700000000])
-    monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    rpc = _strict_rpc(maint, monkeypatch)
-
-    def boom(dbs):
-        raise RuntimeError("disk gone")
-
-    monkeypatch.setattr(maint, "_reset_recent_channels", boom)
-    with pytest.raises(RuntimeError):
-        maint.clearRecentChannels(mode="silent")
-    assert rpc.addons["pvr.iptvsimple"] is True
-
-
-def test_clear_recent_channels_re_enable_failure_keeps_the_marker(
-    maint, tmp_path, monkeypatch
-):
-    """A re-enable Kodi refuses leaves the pause marker, so the boot healer
-    (service._maybe_resume_paused_pvr) turns the client back on."""
-    dbdir = tmp_path / "db"
-    dbdir.mkdir()
-    _make_pvr_db(dbdir / "TV48.db", [1700000000])
-    monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    pvrpause = importlib.import_module("resources.lib.modules.pvrpause")
-    monkeypatch.setattr(pvrpause, "_POLL_S", 0.0)
-    rpc = _strict_rpc(maint, monkeypatch)
-    rpc.fail_methods.add(("Addons.SetAddonEnabled", True))
-
-    assert maint.clearRecentChannels(mode="silent") == 1
-    assert rpc.addons["pvr.iptvsimple"] is False
-    assert maint_tools(maint).pvr_pause_pending()
+    maint.clearRecentChannels(mode="silent")
+    assert any(
+        "recent channels: reset 1 row(s) in TV48.db" in m for m, _lvl in maint._rec.logs
+    )
 
 
 def test_clear_recent_channels_noop_when_none_found(maint, tmp_path, monkeypatch):

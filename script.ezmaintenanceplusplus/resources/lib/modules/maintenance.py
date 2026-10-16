@@ -11,7 +11,7 @@ import time
 import shutil
 from resources.lib.modules.backtothefuture import PY2
 from resources.lib.modules import addon_id as _addon_id
-from resources.lib.modules import pvrpause, ui
+from resources.lib.modules import ui
 
 # Code to map the old translatePath
 if PY2:
@@ -263,24 +263,16 @@ def clearRecentChannels(mode="verbose"):
     """Clear the PVR 'recently played channels' list by resetting iLastWatched in
     the current TV/Radio databases. No-op (with a notice) when none are found.
 
-    1. The write happens with pvr.iptvsimple disabled (``pvrpause.paused``,
-       ``Addons.SetAddonEnabled``) so a running client cannot write stale
-       in-memory state back over the reset (the Kodi settings-clobber class).
-       If the client cannot be paused, nothing is written. Until 2026.10.15.1
-       this "paused" through ``pvrmanager.enabled``, a setting Kodi does not
-       have, so the write always ran under a live client.
-    2. A restart is offered afterward. On the Kodi 22.0 RC1 macOS bench
-       (2026-10-15) the re-enable reloaded the channels from the database,
-       so ``PVR.GetChannels`` lastplayed was already cleared before any
-       restart; the offer stays for the skin's home widget, which was not
-       measured.
+    The write runs with the PVR client live. There is no PVR pause:
+    Kodi has no ``pvrmanager.enabled`` (the "pause" this used until
+    2026.10.15.1 was a setting Kodi answers Invalid params for), and turning
+    pvr.iptvsimple off instead stops the PVR manager, which aborted Kodi 22.0
+    RC1 in 3 of 10 plain JSON-RPC toggles on the macOS bench (2026-10-15).
+    On that bench the live write survived a clean quit and restart.
 
-    KNOWN RISK, MEASURED on that bench: disabling the last PVR client stops
-    the PVR manager, and Kodi 22.0 RC1 sometimes aborts in a JobWorker
-    (``CJobQueue::QueueNextJob`` on a queue whose owner is already gone;
-    which owner was not identified) while doing so: 3 of 10 plain JSON-RPC toggles and 2 of 8
-    runs of this action. Kodi's bug, not this add-on's, but this action
-    triggers it.
+    A restart is offered afterward so everything that reads the PVR
+    manager's in-memory channel state (the home widget among them) reloads
+    from the cleared database.
     """
     dbs = _pvr_databases()
     if _count_recent_channels(dbs) == 0:
@@ -288,27 +280,12 @@ def clearRecentChannels(mode="verbose"):
             ui.notify("No recently played channels", icon=iconpath, time_ms=3000)
         return 0
 
-    with pvrpause.paused() as state:
-        if state == pvrpause.FAILED:
-            xbmc.log(
-                "ezmaintenanceplus: recent channels NOT cleared: the PVR client "
-                "could not be paused",
-                level=xbmc.LOGWARNING,
-            )
-            cleared = 0
-        else:
-            cleared = _reset_recent_channels(dbs)
-            xbmc.log(
-                "ezmaintenanceplus: recent channels: reset %d row(s) in %s"
-                % (cleared, ", ".join(os.path.basename(d) for d in dbs)),
-                level=xbmc.LOGINFO,
-            )
-    if mode == "verbose" and state == pvrpause.FAILED:
-        ui.notify(
-            "Could not pause the PVR client; nothing cleared",
-            icon=iconpath,
-            time_ms=4000,
-        )
+    cleared = _reset_recent_channels(dbs)
+    xbmc.log(
+        "ezmaintenanceplus: recent channels: reset %d row(s) in %s"
+        % (cleared, ", ".join(os.path.basename(d) for d in dbs)),
+        level=xbmc.LOGINFO,
+    )
     if mode == "verbose" and cleared:
         ui.ask_restart(
             "Cleared %d recently played channel(s). Kodi must reload for the "

@@ -1,15 +1,12 @@
 v2026.10.15.1
-- Clear recently played channels now really pauses the TV client while
-  it clears the list. It used to ask Kodi to pause the PVR with a
-  setting Kodi does not have, so Kodi refused, the pause never
-  happened and the list was rewritten while the IPTV client was
-  running. It now switches the IPTV client off for the moment it
-  takes, clears the list and switches it back on, the same way restore
-  and the channel-settings reload already do; if the box stops in
-  between, the next start switches the client back on. A client you
-  turned off yourself stays off, and if the client cannot be paused
-  nothing is cleared and you are told so. Nothing else changed:
-  backups, restores and the custom menu are untouched.
+- Clear recently played channels no longer asks Kodi for a setting it
+  does not have. It used to try to pause the TV service with a setting
+  that does not exist in Kodi 21 or 22, so the pause never happened
+  anyway; that call is gone and the list is cleared directly, which
+  Kodi keeps after a restart. The channels it clears are also reset
+  the way Kodi itself marks a channel never watched. Kodi still offers
+  a restart afterwards so the home screen catches up. Nothing else
+  changed: backups, restores and the custom menu are untouched.
 
 v2026.09.27.3
 - Kodi's log now stays clean after the speed test: the add-on no
