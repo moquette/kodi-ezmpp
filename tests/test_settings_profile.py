@@ -1497,7 +1497,7 @@ def test_skin_bool_apply_already_and_no_skin_paths(monkeypatch, tmp_path):
 # --------------------------------------------------------------------------- #
 # 5. Guisettings nodes (the expert settings level) and RssFeeds.xml -
 #    the 2026.08.30.4 additions. Mechanism measured on the macOS bench,
-#    2026-08-30 (Kodi 22.0-BETA1, a872eae1a5, isolated first-run HOME):
+#    2026-08-30 (Kodi 22 pre-release a872eae1a5, isolated first-run HOME):
 #    arm 1: a guisettings.xml file write made while Kodi runs is CLOBBERED by
 #           the clean-close flush (wrote 3, quit, file read 1), while a
 #           mid-session RssFeeds.xml write SURVIVES the same quit untouched;

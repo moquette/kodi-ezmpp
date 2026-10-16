@@ -26,7 +26,7 @@ for: everything, one artifact. Appetite: open to reworking restore if needed.
 
 **Kodi will not stop you.** A skin add-on CAN declare `xbmc.python.pluginsource`,
 serve `plugin://skin.estuary.pov/...`, and stay hidden from the add-on browser
-with an empty `<provides>`. Measured in Kodi 22.0b1 source:
+with an empty `<provides>`. Measured in the Kodi 22 source:
 `AddonInfoBuilder.cpp:395-598` appends every `<extension>` to `m_types` and takes
 `m_types[0]` as the main type; `AddonInfo.cpp:193-211` makes `HasType` true if
 ANY extension matches, so one add-on can satisfy both the SKIN and PLUGIN

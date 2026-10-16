@@ -7,7 +7,7 @@
          steps 3 then 4). weather.multi ships in this bundle's addons/ with
          its four pure-python deps; its remaining deps resolve on every box
          (script.module.pil is bundled inside each platform's Kodi build -
-         measured in Kodi.app 22.0b1, and absent from ts1's userdata addons
+         measured in the Kodi 22.0 RC1 macOS build, and absent from ts1's userdata addons
          after a real install - and script.module.requests is this add-on's
          own hard dependency, so it exists wherever this profile can run).
 

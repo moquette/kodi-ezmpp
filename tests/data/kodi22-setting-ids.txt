@@ -1,10 +1,13 @@
 # Kodi core setting ids, captured 2026-08-30 on the macOS bench.
-# Source: Kodi 22.0-BETA1 (21.90.801) Git:20260727-a872eae1a5, a genuine
+# Source: Kodi 21.90.801 Git:20260727-a872eae1a5, a genuine
 # first-run profile in an isolated HOME. Union of Settings.GetSettings at
 # expert level (317 ids) and the setting ids Kodi itself wrote into that
 # profile's guisettings.xml. The union matters: system.playlistspath is
 # absent from GetSettings at every level yet fully gettable and settable
 # over JSON-RPC (measured; see docs/settings-profile-experiments-2026-08-30.md).
+# Re-checked 2026-10-15 against the official Kodi 22.0 RC1 macOS build: all
+# 418 ids are defined there (415 in system/settings/settings.xml or darwin.xml;
+# dvds.autorun and the two musicplayer.replaygain*preamp ids in the binary).
 # Consumed by the bundle-authoring gate in tests/test_settings_profile.py.
 accessibility.audiohearing
 accessibility.audiovisual

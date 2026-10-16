@@ -24,8 +24,8 @@ repository.tony7bones|addons/repository.tony7bones-3.0.0.zip|last
 #   script.openweathermap.maps-1.0.6      137569ea1632edeb009587176846f6aa23243c81a078c8fc2bc1d92213cdea50
 #   weather.multi-1.1.6                   1ba06630390e8ea10127eea01a49d42ecb1969b40cf8b7905d28737ea4b5c0d8
 # Two dependencies are deliberately NOT bundled: script.module.pil is compiled
-# per platform and ships INSIDE every Kodi build (present in Kodi.app 22.0b1's
-# system addons; absent from the official index and from ts1's userdata after
+# per platform and ships INSIDE every Kodi build (present in the official Kodi
+# 22.0 RC1 macOS build's system addons, measured 2026-10-15; absent from the official index and from ts1's userdata after
 # a real install), and script.module.requests is this add-on's own declared
 # dependency, so it is installed wherever this profile can run. Updates still
 # flow: these are the official versions, so the official repo upgrades them

@@ -110,6 +110,22 @@
     "host/build_iptv.py",
     "mini/iptv/vendor",
     "~/Code/moquette/kodi",
-    "moquette/ezmaintenanceplusplus"
+    "moquette/ezmaintenanceplusplus",
+    "beta1",
+    "beta2",
+    "Beta1",
+    "Beta2",
+    "BETA1",
+    "BETA2",
+    "beta 1",
+    "beta 2",
+    "Beta 1",
+    "Beta 2",
+    "BETA 1",
+    "BETA 2",
+    "22.0b1",
+    "22.0b2",
+    "22.0.beta",
+    "Piers_beta"
   ]
 }
