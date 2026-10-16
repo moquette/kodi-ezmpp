@@ -417,10 +417,15 @@ def test_fresh_start_wipe_still_removes_the_databases(env):
     database it no longer has. The counterpart is test_restore_wipe_preserves_the_live
     _databases below, for the path that CANNOT exit.
     """
+    # Omega (21) and Piers (22) schema names side by side.
     live = [
         "userdata/Database/Textures13.db",
         "userdata/Database/MyVideos131.db",
         "userdata/Database/Epg16.db",
+        "userdata/Database/Textures14.db",
+        "userdata/Database/MyVideos149.db",
+        "userdata/Database/Epg22.db",
+        "userdata/Database/TV48.db",
     ]
     for rel in live:
         _w(env.home, rel, b"sqlite")
@@ -432,7 +437,7 @@ def test_fresh_start_wipe_still_removes_the_databases(env):
     for rel in live:
         assert not (env.home / rel).exists(), "%s survived a Fresh Start wipe" % rel
     assert failed == 0 and list(leftovers) == []
-    assert files_removed == 3
+    assert files_removed == len(live)
 
 
 def test_restore_wipe_preserves_the_live_databases(env):
@@ -453,6 +458,11 @@ def test_restore_wipe_preserves_the_live_databases(env):
         "userdata/Database/MyMusic83.db",
         "userdata/Database/ViewModes6.db",
         "userdata/Database/Addons33.db",
+        # Piers (22) schema names
+        "userdata/Database/Textures14.db",
+        "userdata/Database/MyVideos149.db",
+        "userdata/Database/Epg22.db",
+        "userdata/Database/TV48.db",
     ]
     for rel in live:
         _w(env.home, rel, b"sqlite")

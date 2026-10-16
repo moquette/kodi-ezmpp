@@ -1,3 +1,13 @@
+v2026.10.15.1
+- Clear recently played channels no longer asks Kodi for a setting it
+  does not have. It used to try to pause the TV service with a setting
+  that does not exist in Kodi 21 or 22, so the pause never happened
+  anyway; that call is gone and the list is cleared directly, which
+  Kodi keeps after a restart. The channels it clears are also reset
+  the way Kodi itself marks a channel never watched. Kodi still offers
+  a restart afterwards so the home screen catches up. Nothing else
+  changed: backups, restores and the custom menu are untouched.
+
 v2026.09.27.3
 - Kodi's log now stays clean after the speed test: the add-on no
   longer leaves its settings objects behind in memory when it closes,

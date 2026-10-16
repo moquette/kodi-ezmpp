@@ -91,7 +91,7 @@ def _is_regenerable_cache_arc(arc):
     the file is now present at walk time and has to be excluded on purpose.
 
     Excluding it is right on its own merits, not just to hold the old archive size.
-    SQLite never returns freed space: measured on the bench, a Textures13.db emptied of
+    SQLite never returns freed space: measured on the bench, a texture database emptied of
     all 5007 rows still occupied 1.2 MB with 286 of 295 pages on the freelist and
     auto_vacuum off, and the freed pages keep their old contents, so it does not
     compress away either (225 KB deflated of pure dead weight). It is also a live
@@ -108,7 +108,7 @@ def _is_regenerable_cache_arc(arc):
     if not (a.startswith("userdata/Database/") or a.startswith("Database/")):
         return False
     base = a.rsplit("/", 1)[-1]
-    # `.db*`, not `.db`: a stray Textures13.db-journal restored beside a surviving
+    # `.db*`, not `.db`: a stray Textures<N>.db-journal restored beside a surviving
     # database is the silent-rollback hazard keep_live_databases() exists to avoid.
     return base.startswith("Textures") and ".db" in base
 

@@ -34,6 +34,8 @@ from pathlib import Path
 
 import pytest
 
+import fake_kodi_jsonrpc
+
 HERE = Path(__file__).parent
 REPO_ROOT = HERE.parent
 ADDON_ROOT = REPO_ROOT / "script.ezmaintenanceplusplus"
@@ -782,78 +784,121 @@ def test_pvr_databases_missing_directory(maint, tmp_path, monkeypatch):
     assert maint._pvr_databases() == []
 
 
-def test_clear_recent_channels_uses_only_current_schema(maint, tmp_path, monkeypatch):
-    # End to end: a stale TV45.db holding recent channels must be left ALONE, and the
-    # count/clear must come from TV46.db only.
+def _strict_rpc(maint, monkeypatch, pvr_enabled=True):
+    """Kodi's JSON-RPC as Kodi answers it: unknown setting ids are errors.
+    pvr_enabled None means pvr.iptvsimple is not installed."""
+    addons = {} if pvr_enabled is None else {"pvr.iptvsimple": pvr_enabled}
+    return fake_kodi_jsonrpc.install(monkeypatch, maint.xbmc, addons=addons)
+
+
+def maint_tools(maint):
+    return importlib.import_module("resources.lib.modules.tools")
+
+
+def _recent(db):
+    con = sqlite3.connect(str(db))
+    try:
+        return con.execute(
+            "SELECT COUNT(*) FROM channels WHERE iLastWatched > 0"
+        ).fetchone()[0]
+    finally:
+        con.close()
+
+
+def test_strict_fake_rejects_the_setting_kodi_does_not_have():
+    """The fake must answer like Kodi: pvrmanager.enabled is in neither Omega
+    nor Piers (Settings.h), and GetSettingValue on an unknown id is
+    Invalid params. The old fake answered it, which is how the bug shipped."""
+    rpc = fake_kodi_jsonrpc.FakeKodiRPC()
+    for method in ("Settings.GetSettingValue", "Settings.SetSettingValue"):
+        resp = rpc.answer(method, {"setting": "pvrmanager.enabled", "value": False})
+        assert "result" not in resp
+        assert resp["error"]["code"] == -32602
+
+
+def test_clear_recent_channels_never_reads_a_setting_kodi_lacks(
+    maint, tmp_path, monkeypatch
+):
     dbdir = tmp_path / "db"
     dbdir.mkdir()
-    _make_pvr_db(dbdir / "TV45.db", [1700000000, 1700000001])  # stale, must not change
-    _make_pvr_db(dbdir / "TV46.db", [1700000000])  # current, 1 recent
+    _make_pvr_db(dbdir / "TV48.db", [1700000000])
     monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    monkeypatch.setattr(
-        maint,
-        "_jsonrpc",
-        lambda m, p: (
-            {"result": {"value": True}} if m == "Settings.GetSettingValue" else {}
-        ),
-    )
-    monkeypatch.setattr(maint.xbmc, "sleep", lambda ms: None)
+    rpc = _strict_rpc(maint, monkeypatch)
+
+    maint.clearRecentChannels(mode="silent")
+    unknown = [
+        p.get("setting")
+        for m, p in rpc.calls
+        if m.startswith("Settings.") and p.get("setting") not in rpc.settings
+    ]
+    assert unknown == [], "asked Kodi for setting ids it does not have: %r" % unknown
+
+
+def test_clear_recent_channels_uses_only_current_schema(maint, tmp_path, monkeypatch):
+    # End to end: a stale TV46.db holding recent channels must be left ALONE, and the
+    # count/clear must come from TV48.db (Piers) only.
+    dbdir = tmp_path / "db"
+    dbdir.mkdir()
+    _make_pvr_db(dbdir / "TV46.db", [1700000000, 1700000001])  # stale, must not change
+    _make_pvr_db(dbdir / "TV48.db", [1700000000])  # current, 1 recent
+    monkeypatch.setattr(maint, "databasePath", str(dbdir))
+    _strict_rpc(maint, monkeypatch)
 
     assert maint.clearRecentChannels(mode="silent") == 1
-
-    con = sqlite3.connect(str(dbdir / "TV45.db"))
-    stale = con.execute(
-        "SELECT COUNT(*) FROM channels WHERE iLastWatched > 0"
-    ).fetchone()[0]
-    con.close()
-    assert stale == 2, "the stale schema DB must never be touched"
+    assert _recent(dbdir / "TV46.db") == 2, "the stale schema DB must never be touched"
 
 
-def test_clear_recent_channels_resets_only_watched(maint, tmp_path, monkeypatch):
+def test_clear_recent_channels_never_toggles_the_pvr_client(
+    maint, tmp_path, monkeypatch
+):
+    """No PVR pause: disabling pvr.iptvsimple stops the PVR manager, which
+    aborted Kodi 22.0 RC1 in 3 of 10 toggles on the bench (2026-10-15). The
+    write runs live and the restart offer reloads the in-memory state."""
     dbdir = tmp_path / "db"
     dbdir.mkdir()
-    _make_pvr_db(dbdir / "TV46.db", [1700000000, 0, 1700000100])  # 2 recent, 1 not
+    db = dbdir / "TV48.db"
+    _make_pvr_db(db, [1700000000, 0, 1700000100])  # 2 recent, 1 not
     monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    calls = []
+    rpc = _strict_rpc(maint, monkeypatch)
 
-    def fake_rpc(method, params):
-        calls.append((method, params.get("setting"), params.get("value")))
-        if method == "Settings.GetSettingValue":
-            return {"result": {"value": True}}  # pvr manager currently on
-        return {"result": "OK"}
-
-    monkeypatch.setattr(maint, "_jsonrpc", fake_rpc)
-    monkeypatch.setattr(maint.xbmc, "sleep", lambda ms: None)
-
-    cleared = maint.clearRecentChannels(mode="silent")
-    assert cleared == 2
-    con = sqlite3.connect(str(dbdir / "TV46.db"))
-    remaining = con.execute(
-        "SELECT COUNT(*) FROM channels WHERE iLastWatched > 0"
-    ).fetchone()[0]
+    assert maint.clearRecentChannels(mode="silent") == 2
+    assert _recent(db) == 0, "every recent-watch timestamp must be reset"
+    con = sqlite3.connect(str(db))
+    groups = [r[0] for r in con.execute("SELECT iLastWatchedGroupId FROM channels")]
     con.close()
-    assert remaining == 0, "every recent-watch timestamp must be reset"
-    sets = [c for c in calls if c[0] == "Settings.SetSettingValue"]
-    assert sets == [
-        ("Settings.SetSettingValue", "pvrmanager.enabled", False),
-        ("Settings.SetSettingValue", "pvrmanager.enabled", True),
-    ], "must disable pvrmanager around the write, then re-enable it (clobber-safe)"
+    assert groups == [-1, 0, -1], "cleared rows take Kodi's 'no group' (-1)"
+    assert rpc.addon_history == [], "the PVR client must never be toggled"
+    assert rpc.addons["pvr.iptvsimple"] is True
+    assert not [m for m, _p in rpc.calls if m.startswith("Settings.")]
+    assert not maint_tools(maint).pvr_pause_pending()
+
+
+def test_clear_recent_channels_logs_the_write(maint, tmp_path, monkeypatch):
+    dbdir = tmp_path / "db"
+    dbdir.mkdir()
+    _make_pvr_db(dbdir / "TV48.db", [1700000000])
+    monkeypatch.setattr(maint, "databasePath", str(dbdir))
+    _strict_rpc(maint, monkeypatch)
+
+    maint.clearRecentChannels(mode="silent")
+    assert any(
+        "recent channels: reset 1 row(s) in TV48.db" in m for m, _lvl in maint._rec.logs
+    )
 
 
 def test_clear_recent_channels_noop_when_none_found(maint, tmp_path, monkeypatch):
     dbdir = tmp_path / "db"
     dbdir.mkdir()
-    _make_pvr_db(dbdir / "TV46.db", [0, 0])  # nothing recently played
+    _make_pvr_db(dbdir / "TV48.db", [0, 0])  # nothing recently played
     monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    calls = []
-    monkeypatch.setattr(maint, "_jsonrpc", lambda m, p: calls.append(m) or {})
+    rpc = _strict_rpc(maint, monkeypatch)
     notes = []
     maint.ui.notify = lambda msg, **k: notes.append(msg)
 
     cleared = maint.clearRecentChannels(mode="verbose")
     assert cleared == 0
     assert notes == ["No recently played channels"]
-    assert calls == [], "must not disable pvrmanager when nothing is found"
+    assert rpc.calls == [], "must not touch the PVR client when nothing is found"
 
 
 def test_clear_recent_channels_verbose_offers_restart(maint, tmp_path, monkeypatch):
@@ -861,16 +906,9 @@ def test_clear_recent_channels_verbose_offers_restart(maint, tmp_path, monkeypat
     reads the PVR manager's memory and only updates on a Kodi reload."""
     dbdir = tmp_path / "db"
     dbdir.mkdir()
-    _make_pvr_db(dbdir / "TV46.db", [1700000000])
+    _make_pvr_db(dbdir / "TV48.db", [1700000000])
     monkeypatch.setattr(maint, "databasePath", str(dbdir))
-    monkeypatch.setattr(
-        maint,
-        "_jsonrpc",
-        lambda m, p: (
-            {"result": {"value": True}} if m == "Settings.GetSettingValue" else {}
-        ),
-    )
-    monkeypatch.setattr(maint.xbmc, "sleep", lambda ms: None)
+    _strict_rpc(maint, monkeypatch)
     restarts = []
     maint.ui.ask_restart = lambda status="", **k: restarts.append(status)
     maint.clearRecentChannels(mode="verbose")
