@@ -11,7 +11,7 @@ import time
 import shutil
 from resources.lib.modules.backtothefuture import PY2
 from resources.lib.modules import addon_id as _addon_id
-from resources.lib.modules import ui
+from resources.lib.modules import pvrpause, ui
 
 # Code to map the old translatePath
 if PY2:
@@ -93,10 +93,10 @@ def clearCache(mode="verbose"):
 
 
 def _purge_texture_cache():
-    """Empty Kodi's texture cache THROUGH Kodi. Never by unlinking Textures13.db.
+    """Empty Kodi's texture cache THROUGH Kodi. Never by unlinking Textures<N>.db.
 
-    `os.unlink(Textures13.db)` under a live Kodi is a delayed-action crash, not a
-    clean. Kodi keeps an open handle on the now-unlinked inode and carries on; the
+    `os.unlink(Textures<N>.db)` (13 on Omega, 14 on Piers) under a live Kodi is a
+    delayed-action crash, not a clean. Kodi keeps an open handle on the now-unlinked inode and carries on; the
     NEXT texture-cache write fails `SQLITE_READONLY_DBMOVED`, and every write after
     that fails `SQLITE_MISUSE` on the poisoned handle. On Android that storm aborts
     the process. It killed the office Fire TV on 2026-07-21: a backup at 09:55 did
@@ -243,8 +243,11 @@ def _reset_recent_channels(dbs):
         try:
             con = sqlite3.connect(db)
             try:
+                # -1 is Kodi's own "no group" (PVR_GROUP_ID_UNNKOWN in
+                # PVRChannelGroup.h, the CPVRChannel default and what the
+                # schema migration writes); 0 is not a group id it knows.
                 cur = con.execute(
-                    "UPDATE channels SET iLastWatched = 0, iLastWatchedGroupId = 0 "
+                    "UPDATE channels SET iLastWatched = 0, iLastWatchedGroupId = -1 "
                     "WHERE iLastWatched > 0"
                 )
                 cleared += cur.rowcount
@@ -260,16 +263,24 @@ def clearRecentChannels(mode="verbose"):
     """Clear the PVR 'recently played channels' list by resetting iLastWatched in
     the current TV/Radio databases. No-op (with a notice) when none are found.
 
-    Two things are needed and both are hardware-proven:
+    1. The write happens with pvr.iptvsimple disabled (``pvrpause.paused``,
+       ``Addons.SetAddonEnabled``) so a running client cannot write stale
+       in-memory state back over the reset (the Kodi settings-clobber class).
+       If the client cannot be paused, nothing is written. Until 2026.10.15.1
+       this "paused" through ``pvrmanager.enabled``, a setting Kodi does not
+       have, so the write always ran under a live client.
+    2. A restart is offered afterward. On the Kodi 22.0 RC1 macOS bench
+       (2026-10-15) the re-enable reloaded the channels from the database,
+       so ``PVR.GetChannels`` lastplayed was already cleared before any
+       restart; the offer stays for the skin's home widget, which was not
+       measured.
 
-    1. The write happens inside a PVR-disabled window so the running client
-       cannot clobber the reset (the Kodi settings-clobber class).
-    2. Kodi must be RESTARTED afterward for the change to show. The home widget
-       reads ``pvr://channels/tv/*?view=lastplayed``, which Kodi serves from the
-       PVR manager's IN-MEMORY channel state - not the disk DB. A skin reload and
-       a pvrmanager pause/resume both leave the stale channel on screen; only a
-       full restart reloads lastplayed from the (now-cleared) database. So in
-       verbose mode we offer a restart after clearing.
+    KNOWN RISK, MEASURED on that bench: disabling the last PVR client stops
+    the PVR manager, and Kodi 22.0 RC1 sometimes aborts in a JobWorker
+    (``CJobQueue::QueueNextJob`` on a queue whose owner is already gone;
+    which owner was not identified) while doing so: 3 of 10 plain JSON-RPC toggles and 2 of 8
+    runs of this action. Kodi's bug, not this add-on's, but this action
+    triggers it.
     """
     dbs = _pvr_databases()
     if _count_recent_channels(dbs) == 0:
@@ -277,22 +288,27 @@ def clearRecentChannels(mode="verbose"):
             ui.notify("No recently played channels", icon=iconpath, time_ms=3000)
         return 0
 
-    r = _jsonrpc("Settings.GetSettingValue", {"setting": "pvrmanager.enabled"})
-    was_on = bool((r.get("result") or {}).get("value"))
-    try:
-        if was_on:
-            _jsonrpc(
-                "Settings.SetSettingValue",
-                {"setting": "pvrmanager.enabled", "value": False},
+    with pvrpause.paused() as state:
+        if state == pvrpause.FAILED:
+            xbmc.log(
+                "ezmaintenanceplus: recent channels NOT cleared: the PVR client "
+                "could not be paused",
+                level=xbmc.LOGWARNING,
             )
-            xbmc.sleep(2000)  # let the manager flush its in-memory state + release
-        cleared = _reset_recent_channels(dbs)
-    finally:
-        if was_on:
-            _jsonrpc(
-                "Settings.SetSettingValue",
-                {"setting": "pvrmanager.enabled", "value": True},
+            cleared = 0
+        else:
+            cleared = _reset_recent_channels(dbs)
+            xbmc.log(
+                "ezmaintenanceplus: recent channels: reset %d row(s) in %s"
+                % (cleared, ", ".join(os.path.basename(d) for d in dbs)),
+                level=xbmc.LOGINFO,
             )
+    if mode == "verbose" and state == pvrpause.FAILED:
+        ui.notify(
+            "Could not pause the PVR client; nothing cleared",
+            icon=iconpath,
+            time_ms=4000,
+        )
     if mode == "verbose" and cleared:
         ui.ask_restart(
             "Cleared %d recently played channel(s). Kodi must reload for the "

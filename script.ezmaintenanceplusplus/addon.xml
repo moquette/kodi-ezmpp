@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.ezmaintenanceplusplus" name="EZ Maintenance++" version="2026.09.27.3" provider-name="tony7bones">
+<addon id="script.ezmaintenanceplusplus" name="EZ Maintenance++" version="2026.10.15.1" provider-name="tony7bones">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="1.0.0" />
@@ -21,6 +21,7 @@
 	    <fanart>fanart.jpg</fanart>
     </assets>
     <news>
+        v2026.10.15.1: Clear recently played channels now really pauses the TV client while it clears the list. It used to ask Kodi to pause the PVR with a setting Kodi does not have, so Kodi refused, the pause never happened and the list was rewritten while the IPTV client was running. It now switches the IPTV client off for the moment it takes, clears the list and switches it back on, the same way restore and the channel-settings reload already do; if the box stops in between, the next start switches the client back on. A client you turned off yourself stays off, and if the client cannot be paused nothing is cleared and you are told so. Nothing else changed: backups, restores and the custom menu are untouched.
         v2026.09.27.3: Kodi's log now stays clean after the speed test: the add-on no longer leaves its settings objects behind in memory when it closes, which Kodi reported with a warning after a speed test on 2026.09.27.2. A speed test server that answers with garbage now fails that one request instead of the whole test. Nothing else changed: backups, restores and the custom menu are untouched.
         v2026.09.27.2: The speed test now runs inside the add-on instead of being handed to Kodi as a loose script, and Kodi's log stays clean while it runs: the warning about a script with no add-on, and one warning per menu row about an old way of labelling items, are both gone. The speed test also reads speedtest.net's answers with Python's own XML reader again. Nothing else changed: backups, restores and the custom menu are untouched.
         v2026.09.27.1: The skin is now Estuary++. A box still on Estuary POV moves itself across the next time it starts: it installs Estuary++ from the repository, carries the arranged menu and every skin setting over, and switches, all before you see the home screen settle. On the start after that it removes the old skin. Nothing to do by hand; a restore of an older backup lands on Estuary++ too. If something is playing when the box starts, the move waits for the next quiet minute. A switch in this add-on's Maintenance settings turns the move off, should you ever want that.

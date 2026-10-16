@@ -72,7 +72,7 @@ def _wipe_excludes():
 # Kodi holds a persistent CDatabase connection on every userdata/Database/*.db for as
 # long as it runs. Unlinking one leaves Kodi writing to an unlinked inode: the next
 # write fails SQLITE_READONLY_DBMOVED, every write after that fails SQLITE_MISUSE, and
-# on Android the storm aborts the process. A SINGLE unlinked Textures13.db is what
+# on Android the storm aborts the process. A SINGLE unlinked texture database (Textures<N>.db) is what
 # killed the office Fire TV on 2026-07-21 (see maintenance._purge_texture_cache).
 #
 # So the rule is NOT "never delete a database" - it is: delete them only if this
